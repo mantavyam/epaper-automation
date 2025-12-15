@@ -5,7 +5,7 @@ on:
     # Run every day at 6:00 AM IST (00:30 UTC)
     - cron: '30 0 * * *'
   
-  workflow_dispatch:  # Allow manual trigger
+  workflow_dispatch:
     inputs:
       force_download:
         description: 'Force download even if already processed'
@@ -36,7 +36,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install requests PyPDF2
+        pip install requests PyPDF2 beautifulsoup4
     
     - name: Create necessary directories
       run: |
@@ -88,21 +88,14 @@ jobs:
         echo "" >> $GITHUB_STEP_SUMMARY
         
         if [ -f download_history.json ]; then
-          LAST_ENTRIES=$(python3 -c "
-import json
-with open('download_history.json') as f:
-    data = json.load(f)
-    recent = data['downloads'][-2:] if len(data['downloads']) >= 2 else data['downloads']
-    for entry in recent:
-        print(f\"- **{entry['newspaper']}** ({entry['date']}) - ✓ Downloaded\")
-" 2>/dev/null || echo "- Processing completed")
-          echo "$LAST_ENTRIES" >> $GITHUB_STEP_SUMMARY
+          echo "### Recent Downloads" >> $GITHUB_STEP_SUMMARY
+          python3 -c 'import json; data = json.load(open("download_history.json")); recent = data["downloads"][-2:] if len(data["downloads"]) >= 2 else data["downloads"]; [print(f"- **{e[\"newspaper\"]}** ({e[\"date\"]}) - ✓ Downloaded") for e in recent]' >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "- Processing completed" >> $GITHUB_STEP_SUMMARY
         fi
         
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "📊 [View full history](https://github.com/${{ github.repository }}/blob/main/download_history.json)" >> $GITHUB_STEP_SUMMARY
     
-    - name: Cleanup old runs (keep last 10)
+    - name: Cleanup old runs
       uses: Mattraks/delete-workflow-runs@v2
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
