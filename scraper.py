@@ -37,10 +37,16 @@ HISTORY_FILE = "download_history.json"
 BASE_FOLDER = "e-paper"
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "")
 
-# Newspapers to track
+# Newspapers to track (exact matching required)
 NEWSPAPERS = {
     "The Hindu": "TH",
     "Indian Express": "IE"
+}
+
+# Exact newspaper titles on the website
+NEWSPAPER_EXACT_TITLES = {
+    "The Hindu": "The Hindu",
+    "Indian Express": "Indian Express"
 }
 
 # Setup logging
@@ -141,9 +147,9 @@ class NewspaperDownloader:
                     title_elem = item.find_element(By.CLASS_NAME, "card-d-s-title")
                     title = title_elem.text.strip()
                     
-                    # Check if it's one of our target newspapers
-                    for newspaper_name in NEWSPAPERS.keys():
-                        if newspaper_name in title:
+                    # Check if it's one of our target newspapers (exact match only)
+                    for newspaper_name, exact_title in NEWSPAPER_EXACT_TITLES.items():
+                        if title == exact_title and newspaper_name not in newspaper_links:
                             # Get the Read link
                             read_link = item.find_element(By.CLASS_NAME, "btn-read")
                             href = read_link.get_attribute("href")
@@ -242,10 +248,25 @@ class NewspaperDownloader:
         return None
     
     def download_pdf(self, pdf_url, newspaper_name):
-        """Download the PDF file"""
+        """Download the PDF file using Selenium session cookies"""
         try:
-            response = requests.get(pdf_url, timeout=60)
+            # Get cookies from Selenium session
+            selenium_cookies = self.driver.get_cookies()
+            
+            # Create a requests session with Selenium cookies
+            session = requests.Session()
+            for cookie in selenium_cookies:
+                session.cookies.set(cookie['name'], cookie['value'])
+            
+            # Download with session cookies
+            response = session.get(pdf_url, timeout=60)
             response.raise_for_status()
+            
+            # Verify it's actually a PDF
+            if not response.content.startswith(b'%PDF'):
+                logger.error(f"Downloaded file is not a PDF (size: {len(response.content)} bytes)")
+                logger.error(f"Content starts with: {response.content[:50]}")
+                return None
             
             # Generate filename
             date_str = self.today.strftime("%Y-%m-%d")
