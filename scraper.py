@@ -344,18 +344,18 @@ class NewspaperDownloader:
             
             # Prepare embed
             embed = {
-                "title": f"📰 {newspaper_name} - {date_str}",
+                "title": f"{newspaper_name} - {date_str}",
                 "color": 0x3498db if "Hindu" in newspaper_name else 0xe74c3c,
                 "timestamp": self.today.isoformat(),
                 "footer": {
-                    "text": "E-Newspaper Automation"
+                    "text": "Daily E-Newspaper"
                 }
             }
             
             # Add file info or URL
             if file_path and file_path.exists():
                 file_size = os.path.getsize(file_path) / (1024 * 1024)  # MB
-                embed["description"] = f"✅ Downloaded successfully\n📁 Size: {file_size:.2f} MB"
+                embed["description"] = f"Downloaded successfully\nSize: {file_size:.2f} MB"
                 embed["fields"] = [
                     {
                         "name": "File Location",
@@ -367,7 +367,7 @@ class NewspaperDownloader:
             if pdf_url:
                 embed["fields"] = embed.get("fields", [])
                 embed["fields"].append({
-                    "name": "📥 Direct Link",
+                    "name": "View Newspaper",
                     "value": pdf_url,
                     "inline": False
                 })
@@ -436,7 +436,7 @@ class NewspaperDownloader:
         }
         
         self.save_history()
-        logger.info(f"✅ Successfully processed {newspaper_name}")
+        logger.info(f"Successfully processed {newspaper_name}")
     
     def store_fallback_link(self, newspaper_name, url):
         """Store link as fallback when download fails"""
