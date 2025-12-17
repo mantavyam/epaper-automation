@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<!-- saved from url=(0083)https://www.indiags.com/newspaper/newsletter.php?file=uploads%2FTH-+Delhi+14-12.pdf -->
+<html lang="en">
+
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <style>
+        body {
+            transition: opacity ease-in 0.2s;
+        }
+
+        body[unresolved] {
+            opacity: 0;
+            display: block;
+            overflow: hidden;
+            position: relative;
+        }
+    </style>
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <!--<base href="https://www.indiags.com/" target="_self">-->
+    <base href="." target="_self">
+
+    <link href="./download-file-page_files/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="./download-file-page_files/bootstrap-icons.css">
+    <link href="./download-file-page_files/css2" rel="stylesheet">
+
+    <script async="" src="./download-file-page_files/f.txt" crossorigin="anonymous"></script>
+    <input type="hidden" id="_o_dbjbempljhcmhlfpfacalomonjpalpko" data-inspect-config="7">
+    <script type="text/javascript"
+        src="chrome-extension://odphnbhiddhdpoccbialllejaajemdio/scripts/inspector.js"></script>
+</head>
+
+<body>
+
+    <main class="article-container">
+
+        <p class="text-center text-danger fw-bold mb-4">
+            <i class="bi bi-arrow-down-circle"></i> Scroll to the bottom for the Download Button
+        </p>
+
+        <article>
+            <div class="download-section" id="downloadArea">
+                <h3>Download File</h3>
+                <p class="mb-3">Click the button below to verify and download your file.</p>
+
+                <button id="downloadBtn" class="btn btn-lg px-5 py-3 btn-success">📥 Download Now</button>
+                <div id="countdown" class="mt-2 text-muted">Link is ready.</div>
+            </div>
+        </article>
+    </main>
+
+    <div style="position:fixed; bottom:0; left:0; height:4px; background:#eee; width:100%; z-index:99;">
+        <div style="height:100%; background:red; width:65%;"></div>
+    </div>
+
+    <script src="./download-file-page_files/bootstrap.bundle.min.js"></script>
+    <script src="./download-file-page_files/jquery.min.js"></script>
+
+    <script>
+        // --- Ad Observer Logic ---
+        // This watches the AdSense <ins> tags. 
+        // If AdSense sets data-ad-status="filled", we show the wrapper.
+        // If "unfilled", we hide the wrapper completely.
+        document.addEventListener("DOMContentLoaded", function () {
+            const adObserver = new MutationObserver((mutations) => {
+                mutations.forEach((mutation) => {
+                    if (mutation.type === 'attributes' && mutation.attributeName === 'data-ad-status') {
+                        const ins = mutation.target;
+                        const wrapper = ins.closest('.ad-wrapper');
+
+                        if (wrapper) {
+                            const status = ins.getAttribute('data-ad-status');
+                            if (status === 'filled') {
+                                // Ad loaded: Add styling and show label
+                                wrapper.classList.add('ad-shown');
+                                wrapper.style.display = 'block';
+                            } else if (status === 'unfilled') {
+                                // Ad empty: Hide entirely
+                                wrapper.classList.remove('ad-shown');
+                                wrapper.style.display = 'none';
+                            }
+                        }
+                    }
+                });
+            });
+
+            // Start observing all ad slots
+            document.querySelectorAll('.adsbygoogle').forEach((ad) => {
+                adObserver.observe(ad, { attributes: true });
+            });
+        });
+
+        // --- Table Responsive Wrapper ---
+        document.addEventListener("DOMContentLoaded", function () {
+            document.querySelectorAll(".article-content table").forEach(table => {
+                if (!table.parentElement.classList.contains("table-wrapper")) {
+                    const wrapper = document.createElement("div");
+                    wrapper.className = "table-wrapper";
+                    table.parentNode.insertBefore(wrapper, table);
+                    wrapper.appendChild(table);
+                }
+            });
+        });
+
+        // --- Download Logic ---
+        const countdownTimeStart = 15;
+        let timeLeft = countdownTimeStart;
+        const countdownEl = document.getElementById("countdown");
+        const btn = document.getElementById("downloadBtn");
+
+        if (btn) {
+            const interval = setInterval(() => {
+                timeLeft--;
+                btn.innerHTML = `⏳ Please wait ${timeLeft}s...`;
+
+                if (timeLeft <= 0) {
+                    clearInterval(interval);
+                    btn.disabled = false;
+                    btn.classList.remove("btn-danger");
+                    btn.classList.add("btn-success");
+                    btn.innerHTML = "📥 Download Now";
+                    countdownEl.textContent = "Link is ready.";
+                }
+            }, 1000);
+
+            btn.addEventListener("click", () => {
+                window.location.href = "/newspaper/pdf.php?file=uploads%2FTH-+Delhi+17-12.pdf";
+            });
+        }
+    </script>
+
+
+</body>
+
+</html>

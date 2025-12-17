@@ -1,261 +1,176 @@
-# 📰 E-Newspaper Auto-Downloader
+# 📰 E-Newspaper Automation
 
-Automated system to download The Hindu and Indian Express newspapers from IndiaGS and distribute via Discord.
+> Automated daily download of **The Hindu** and **The Indian Express** newspapers from IndiaGS, with Discord integration for students preparing for competitive exams.
+
+[![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-Automated-blue)](https://github.com/features/actions)
+[![Python 3.11](https://img.shields.io/badge/Python-3.11-blue)](https://www.python.org/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
+## 📚 Documentation
+
+- � **[Getting Started](GETTING_STARTED.md)** - Visual step-by-step guide
+- 📖 **[Quick Start](QUICKSTART.md)** - Get running in 5 minutes
+- 📖 **[Setup Guide](SETUP_GUIDE.md)** - Detailed setup instructions  
+- 🏗️ **[Architecture](ARCHITECTURE.md)** - System design & diagrams
+- 📊 **[Project Summary](PROJECT_SUMMARY.md)** - Comprehensive overview
+- ✅ **[Testing Checklist](TESTING_CHECKLIST.md)** - Verify your setup
+- 🔧 **[Troubleshooting](TROUBLESHOOTING.md)** - Fix common issues
 
 ## 🎯 Features
 
-- ✅ **Automated Daily Downloads** - Runs at 6 AM IST via GitHub Actions
-- 📦 **PDF Compression** - Reduces file sizes to save storage
-- 📁 **Organized Storage** - Month-wise folders (DEC24, JAN25, etc.)
-- 🗑️ **Auto Cleanup** - Deletes old folders after 7-day buffer
-- 📨 **Discord Integration** - Automatic notifications with download links
-- 🔄 **Duplicate Prevention** - Tracks processed newspapers in JSON history
-- 🌐 **GitHub Pages Hosting** - Files accessible via public URLs
-- 🔧 **Smart URL Construction** - Pattern-based approach with fallback
+- ✅ **Automated Daily Downloads**: Runs at 6:00 AM IST via GitHub Actions
+- 📁 **Organized Storage**: PDFs stored in `e-paper/MMMYY/` folders (e.g., `DEC25/`)
+- 🗜️ **PDF Compression**: Optional compression to save storage space
+- 📊 **History Tracking**: JSON-based tracking to avoid duplicate downloads
+- 🧹 **Auto Cleanup**: Deletes old month folders after 7 days into new month
+- 💬 **Discord Integration**: Posts download links to Discord via webhook
+- 🔄 **Fallback System**: Stores original links if download/compression fails
 
-## 📋 Prerequisites
+## 🚀 Setup
 
-- GitHub account
-- Discord server with webhook access
-- Basic Git knowledge
-
-## 🚀 Quick Setup
-
-### Step 1: Fork/Create Repository
-
-1. Create a new GitHub repository (e.g., `epaper-automation`)
-2. Clone it locally:
-   ```bash
-   git clone https://github.com/YOUR_USERNAME/epaper-automation.git
-   cd epaper-automation
-   ```
-
-### Step 2: Add Files
-
-Copy these files to your repository:
-- `newspaper_downloader.py` - Main Python script
-- `.github/workflows/download_newspapers.yml` - GitHub Actions workflow
-- `requirements.txt` - Python dependencies
-- `download_history.json` - Create with: `echo '{"downloads":[]}' > download_history.json`
+### 1. Fork/Clone Repository
 
 ```bash
-mkdir -p .github/workflows e-paper
-touch download_history.json
-echo '{"downloads":[]}' > download_history.json
+git clone https://github.com/YOUR_USERNAME/epaper-automation.git
+cd epaper-automation
 ```
 
-### Step 3: Configure Discord Webhook
+### 2. Configure Discord Webhook
 
-1. Go to your Discord server → Server Settings → Integrations → Webhooks
-2. Click "New Webhook"
-3. Name it "E-Paper Bot", select your channel, copy the webhook URL
-4. In GitHub: Repository → Settings → Secrets and variables → Actions
-5. Click "New repository secret"
-   - Name: `DISCORD_WEBHOOK_URL`
-   - Value: Your webhook URL
-6. Click "Add secret"
+1. Go to your Discord server settings
+2. Navigate to **Integrations** → **Webhooks**
+3. Create a new webhook for your newspaper channel
+4. Copy the webhook URL
 
-### Step 4: Enable GitHub Pages
+### 3. Set GitHub Secrets
 
-1. Go to repository Settings → Pages
-2. Source: Deploy from a branch
-3. Branch: `gh-pages` → `/root`
-4. Click Save
+1. Go to your repository on GitHub
+2. Navigate to **Settings** → **Secrets and variables** → **Actions**
+3. Add a new repository secret:
+   - **Name**: `DISCORD_WEBHOOK_URL`
+   - **Value**: Your Discord webhook URL
 
-### Step 5: Initial Commit and Push
+### 4. Enable GitHub Actions
+
+1. Go to the **Actions** tab in your repository
+2. Enable workflows if prompted
+3. The workflow will run automatically daily at 6:00 AM IST
+
+## 🧪 Manual Testing
+
+Install dependencies locally:
 
 ```bash
-git add .
-git commit -m "Initial setup - E-Paper automation"
-git push origin main
+pip install -r requirements.txt
 ```
 
-### Step 6: Enable Workflow
+Set environment variable:
 
-1. Go to Actions tab in your repository
-2. Click "I understand my workflows, go ahead and enable them"
-3. Select "Download E-Newspapers" workflow
-4. Click "Run workflow" → "Run workflow" to test
+```bash
+export DISCORD_WEBHOOK_URL="your_webhook_url_here"
+```
 
-## 📅 Workflow Schedule
+Run the scraper:
 
-The automation runs:
-- **Daily at 6:00 AM IST** (00:30 UTC)
-- Can be triggered manually from Actions tab
+```bash
+python scraper.py
+```
 
 ## 📂 Folder Structure
 
 ```
 epaper-automation/
+├── scraper.py                 # Main automation script
+├── requirements.txt           # Python dependencies
+├── download_history.json      # Download history (auto-generated)
 ├── .github/
 │   └── workflows/
-│       └── download_newspapers.yml
-├── e-paper/
-│   ├── DEC24/
-│   │   ├── TH-Delhi-14-12.pdf
-│   │   └── IE-Delhi-14-12.pdf
-│   ├── JAN25/
-│   │   └── ...
-│   └── FEB25/
-│       └── ...
-├── newspaper_downloader.py
-├── download_history.json
-├── requirements.txt
-└── README.md
+│       └── daily-newspaper.yml  # GitHub Actions workflow
+└── e-paper/                   # Downloaded newspapers (auto-generated)
+    ├── DEC25/
+    │   ├── TH_2025-12-17.pdf
+    │   └── IE_2025-12-17.pdf
+    └── JAN26/
+        └── ...
 ```
 
 ## 🔧 Configuration
 
-### Modify Newspapers
-
-Edit `newspaper_downloader.py`:
-
-```python
-self.newspapers = {
-    "The Hindu": "TH-+Delhi",
-    "Indian Express": "IE-+Delhi",
-    # Add more:
-    # "The Hindu International": "TH-+International",
-}
-```
-
 ### Change Schedule
 
-Edit `.github/workflows/download_newspapers.yml`:
+Edit [.github/workflows/daily-newspaper.yml](.github/workflows/daily-newspaper.yml):
 
 ```yaml
 schedule:
-  # Format: minute hour day month day-of-week (UTC)
-  - cron: '30 0 * * *'  # 6:00 AM IST
-  # Examples:
-  # - cron: '0 1 * * *'   # 6:30 AM IST
-  # - cron: '0 */6 * * *' # Every 6 hours
+  - cron: '30 0 * * *'  # 6:00 AM IST (00:30 UTC)
 ```
 
-### Customize Cleanup Period
+### Add More Newspapers
 
-Edit `newspaper_downloader.py`:
+Edit `NEWSPAPERS` dict in [scraper.py](scraper.py):
 
 ```python
-def cleanup_old_folders(self):
-    # Change from day 7 to day 15:
-    if current_date.day > 15:  # Currently 7
-        return
+NEWSPAPERS = {
+    "The Hindu": "TH",
+    "Indian Express": "IE",
+    "Times of India": "TOI"  # Add more
+}
 ```
 
-## 📊 Monitoring
+## 📊 How It Works
 
-### Check Workflow Status
-- Go to Actions tab
-- View recent runs
-- Check logs for any errors
+1. **Scrape Main Page**: Access IndiaGS homepage and locate target newspapers
+2. **Navigate Pages**: Click through intermediate ad/promo pages
+3. **Wait for Timer**: Handle 15-second countdown timer on download page
+4. **Extract PDF URL**: Parse JavaScript to get actual PDF download link
+5. **Download PDF**: Fetch PDF file via requests
+6. **Compress (Optional)**: Use pypdf to compress if available
+7. **Post to Discord**: Send embed with download info
+8. **Update History**: Track processed newspapers in JSON
+9. **Cleanup**: Delete old folders on 8th of each month
 
-### Download History
-- View `download_history.json` in repository
-- Contains all processed newspapers with timestamps
+## 🛠️ Technologies
 
-### Discord Notifications
-Each successful download sends an embed with:
-- Newspaper name and date
-- File size
-- Download link (GitHub Pages)
+- **Python 3.11**: Core automation
+- **Selenium**: Web automation and scraping
+- **Requests**: HTTP requests for downloads
+- **pypdf**: PDF compression
+- **GitHub Actions**: Scheduled execution
+- **Discord Webhooks**: Notifications
 
-## 🛠️ Troubleshooting
+## ⚠️ Important Notes
 
-### Downloads Not Working
+- PDFs are stored in the repository (ensure you have enough storage)
+- GitHub free tier has 500MB storage - consider using Git LFS for larger files
+- The scraper respects the website's timer requirements
+- Fallback links are stored if PDF download fails
 
-1. **Check workflow logs** in Actions tab
-2. **Verify Discord webhook** is correct
-3. **Test manually**: Actions → Download E-Newspapers → Run workflow
+## 🐛 Troubleshooting
 
-### PDFs Not Accessible
+### No newspapers downloaded
 
-1. Ensure GitHub Pages is enabled (Settings → Pages)
-2. Wait 2-3 minutes after first push for Pages deployment
-3. Check URLs match pattern: `https://USERNAME.github.io/REPO/e-paper/DEC24/file.pdf`
+- Check GitHub Actions logs
+- Verify Discord webhook URL is correct
+- Ensure the website structure hasn't changed
 
-### History Not Saving
+### Storage issues
 
-```bash
-# Manually reset history
-echo '{"downloads":[]}' > download_history.json
-git add download_history.json
-git commit -m "Reset history"
-git push
-```
+- Enable Git LFS: `git lfs install && git lfs track "*.pdf"`
+- Or modify script to only post links (not store PDFs)
 
-### Workflow Not Running
+### Chrome/ChromeDriver errors
 
-1. Check if workflow is enabled (Actions tab)
-2. Verify cron syntax is correct
-3. GitHub Actions may have delays up to 15 minutes
+- GitHub Actions handles this automatically
+- For local testing, install Chrome and ChromeDriver manually
 
-## 🔒 Security Notes
+## 📜 License
 
-- Never commit webhook URLs directly in code
-- Always use GitHub Secrets for sensitive data
-- Repository can be private (Actions still work)
-- GitHub Pages can be made private for private repos
-
-## 📈 Usage Limits
-
-GitHub Free Tier:
-- ✅ 2000 Actions minutes/month (plenty for daily runs)
-- ✅ 1GB storage (with PDF compression)
-- ✅ Unlimited GitHub Pages bandwidth
+See [LICENSE](LICENSE) file.
 
 ## 🤝 Contributing
 
-Feel free to:
-- Report issues
-- Suggest improvements
-- Submit pull requests
-
-## 📝 License
-
-This project is for educational purposes. Respect copyright laws and terms of service of content providers.
-
-## ⚡ Advanced Features
-
-### URL Pattern Analysis
-
-The script uses intelligent URL construction:
-```
-Pattern: /newspaper/pdf.php?file=uploads%2F{NEWSPAPER}+{DATE}.pdf
-Example: /newspaper/pdf.php?file=uploads%2FTH-+Delhi+14-12.pdf
-```
-
-### Compression Stats
-
-Typical compression results:
-- Original: 25-35 MB
-- Compressed: 15-25 MB
-- Reduction: 30-40%
-
-### Fallback Mechanism
-
-If direct URL fails, the script can be enhanced with:
-1. Web scraping the listing page
-2. Following navigation links
-3. Bypassing timer logic
-
-## 📞 Support
-
-For issues or questions:
-1. Check existing GitHub Issues
-2. Create new issue with logs
-3. Tag with appropriate labels
-
-## 🎓 For Students
-
-This tool helps students:
-- ✅ Save time on manual downloads
-- ✅ Never miss daily newspapers
-- ✅ Focus on preparation instead of logistics
-- ✅ Share resources efficiently
-
-**Happy Studying! 📚**
+Feel free to open issues or submit PRs for improvements!
 
 ---
 
-*Made with ❤️ for UPSC aspirants and competitive exam students*
+**Made for students preparing for competitive exams** 📚
