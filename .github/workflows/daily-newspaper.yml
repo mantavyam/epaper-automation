@@ -36,13 +36,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y google-chrome-stable
           
-          # Install ChromeDriver
-          CHROME_VERSION=$(google-chrome --version | awk '{print $3}' | cut -d '.' -f 1)
-          wget -q "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_${CHROME_VERSION}" -O /tmp/chromedriver-version
-          CHROMEDRIVER_VERSION=$(cat /tmp/chromedriver-version)
-          wget -q "https://chromedriver.storage.googleapis.com/${CHROMEDRIVER_VERSION}/chromedriver_linux64.zip" -O /tmp/chromedriver.zip
-          sudo unzip -q /tmp/chromedriver.zip -d /usr/local/bin/
-          sudo chmod +x /usr/local/bin/chromedriver
+          # Install ChromeDriver using webdriver-manager (Python package)
+          pip install webdriver-manager
       
       - name: Run newspaper automation
         env:
