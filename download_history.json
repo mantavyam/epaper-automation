@@ -154,5 +154,17 @@
       "timestamp": "2025-12-29T04:12:25.001964",
       "status": "fallback"
     }
+  },
+  "2025-12-30": {
+    "Indian Express": {
+      "fallback_url": "https://www.indiags.com/newspaper/pdf.php?file=uploads%2FIE-+Delhi+30-12.pdf",
+      "timestamp": "2025-12-30T04:02:11.137130",
+      "status": "fallback"
+    },
+    "The Hindu": {
+      "fallback_url": "https://www.indiags.com/newspaper/pdf.php?file=uploads%2FTH-+Delhi+30-12.pdf",
+      "timestamp": "2025-12-30T04:02:42.614559",
+      "status": "fallback"
+    }
   }
 }
