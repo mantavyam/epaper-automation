@@ -190,5 +190,17 @@
       "timestamp": "2026-01-01T04:11:23.353146",
       "status": "fallback"
     }
+  },
+  "2026-01-02": {
+    "Indian Express": {
+      "fallback_url": "https://www.indiags.com/newspaper/pdf.php?file=uploads%2FIE-+Delhi+01-01.pdf",
+      "timestamp": "2026-01-02T04:04:58.847060",
+      "status": "fallback"
+    },
+    "The Hindu": {
+      "fallback_url": "https://www.indiags.com/newspaper/pdf.php?file=uploads%2FTH-+Delhi+01-01.pdf",
+      "timestamp": "2026-01-02T04:05:22.065318",
+      "status": "fallback"
+    }
   }
 }
