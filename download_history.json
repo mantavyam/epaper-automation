@@ -736,6 +736,11 @@
       "fallback_url": "https://www.indiags.com/newspaper/pdf.php?file=uploads%2FIE-+Delhi+16-02.pdf",
       "timestamp": "2026-02-16T05:07:29.232715",
       "status": "fallback"
+    },
+    "The Hindu": {
+      "fallback_url": "https://www.indiags.com/newspaper/pdf.php?file=uploads%2FTH-+Delhi+16-02.pdf",
+      "timestamp": "2026-02-16T10:02:30.182551",
+      "status": "fallback"
     }
   }
 }
