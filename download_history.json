@@ -940,6 +940,11 @@
       "fallback_url": "https://www.indiags.com/newspaper/pdf.php?file=uploads%2FTHS-+Delhi+05-03.pdf",
       "timestamp": "2026-03-05T04:51:15.730297",
       "status": "fallback"
+    },
+    "Indian Express": {
+      "fallback_url": "https://www.indiags.com/newspaper/pdf.php?file=uploads%2FIE-+Delhi+01-03.pdf",
+      "timestamp": "2026-03-05T09:54:36.969445",
+      "status": "fallback"
     }
   }
 }
