@@ -1546,5 +1546,17 @@
       "timestamp": "2026-04-24T04:21:56.437454",
       "status": "fallback"
     }
+  },
+  "2026-04-25": {
+    "Indian Express": {
+      "fallback_url": "https://www.indiags.com/newspaper/ad.php?file=uploads%2FIE-Delhi+25-04.pdf",
+      "timestamp": "2026-04-25T09:58:43.541258",
+      "status": "fallback"
+    },
+    "The Hindu": {
+      "fallback_url": "https://www.indiags.com/newspaper/ad.php?file=uploads%2FTH-+Delhi+25-04.pdf",
+      "timestamp": "2026-04-25T09:58:57.202472",
+      "status": "fallback"
+    }
   }
 }
