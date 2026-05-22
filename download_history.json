@@ -1810,5 +1810,17 @@
       "timestamp": "2026-05-21T05:15:34.650065",
       "status": "fallback"
     }
+  },
+  "2026-05-22": {
+    "Indian Express": {
+      "fallback_url": "https://www.indiags.com/newspaper/ad.php?file=uploads%2FINDIAN+EXPRESS+HD+Delhi+22%7E05%7E2026.pdf",
+      "timestamp": "2026-05-22T05:08:51.352930",
+      "status": "fallback"
+    },
+    "The Hindu": {
+      "fallback_url": "https://www.indiags.com/newspaper/ad.php?file=uploads%2FTHE+HINDU+HD+Delhi+Editable+Full+Edition+22%7E05%7E2026.pdf",
+      "timestamp": "2026-05-22T05:09:16.949137",
+      "status": "fallback"
+    }
   }
 }
