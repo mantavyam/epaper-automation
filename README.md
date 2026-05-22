@@ -1,32 +1,31 @@
-# 📰 E-Newspaper Automation
+# E-Newspaper Link Extractor
 
-> Automated daily download of **The Hindu** and **The Indian Express** newspapers from IndiaGS, with Discord integration for students preparing for competitive exams.
+> Automated daily extraction of **The Hindu** and **The Indian Express** newspaper links from IndiaGS, with Discord webhook delivery for students preparing for competitive exams.
 
 [![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-Automated-blue)](https://github.com/features/actions)
 [![Python 3.11](https://img.shields.io/badge/Python-3.11-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-## 📚 Documentation
+## Documentation
 
-- � **[Getting Started](GETTING_STARTED.md)** - Visual step-by-step guide
-- 📖 **[Quick Start](QUICKSTART.md)** - Get running in 5 minutes
-- 📖 **[Setup Guide](SETUP_GUIDE.md)** - Detailed setup instructions  
-- 🏗️ **[Architecture](ARCHITECTURE.md)** - System design & diagrams
-- 📊 **[Project Summary](PROJECT_SUMMARY.md)** - Comprehensive overview
-- ✅ **[Testing Checklist](TESTING_CHECKLIST.md)** - Verify your setup
-- 🔧 **[Troubleshooting](TROUBLESHOOTING.md)** - Fix common issues
+- **[Getting Started](GETTING_STARTED.md)** - Visual step-by-step guide
+-  **[Quick Start](QUICKSTART.md)** - Get running in 5 minutes
+-  **[Setup Guide](SETUP_GUIDE.md)** - Detailed setup instructions  
+-  **[Architecture](ARCHITECTURE.md)** - System design & diagrams
+-  **[Project Summary](PROJECT_SUMMARY.md)** - Comprehensive overview
+-  **[Testing Checklist](TESTING_CHECKLIST.md)** - Verify your setup
+-  **[Troubleshooting](TROUBLESHOOTING.md)** - Fix common issues
 
-## 🎯 Features
+## Features
 
-- ✅ **Automated Daily Downloads**: Runs at 6:00 AM IST via GitHub Actions
-- 📁 **Organized Storage**: PDFs stored in `e-paper/MMMYY/` folders (e.g., `DEC25/`)
-- 🗜️ **PDF Compression**: Optional compression to save storage space
-- 📊 **History Tracking**: JSON-based tracking to avoid duplicate downloads
-- 🧹 **Auto Cleanup**: Deletes old month folders after 7 days into new month
-- 💬 **Discord Integration**: Posts download links to Discord via webhook
-- 🔄 **Fallback System**: Stores original links if download/compression fails
+- **Automated Daily Extraction**: Runs at 6:00 AM IST via GitHub Actions
+- **Link Detection**: Automatically detects and transforms newspaper PDF links
+- **History Tracking**: JSON-based tracking organized by month and date
+- **Discord Integration**: Posts newspaper links to Discord webhook in real-time
+- **Lean Workflow**: No storage overhead, fast extraction and delivery
+- **Easy Extension**: Simple configuration to add more newspapers
 
-## 🚀 Setup
+## Setup
 
 ### 1. Fork/Clone Repository
 
@@ -76,22 +75,17 @@ Run the scraper:
 python scraper.py
 ```
 
-## 📂 Folder Structure
+## Folder Structure
 
 ```
 epaper-automation/
 ├── scraper.py                 # Main automation script
 ├── requirements.txt           # Python dependencies
-├── download_history.json      # Download history (auto-generated)
+├── download_history.json      # Link history (auto-generated)
 ├── .github/
 │   └── workflows/
 │       └── daily-newspaper.yml  # GitHub Actions workflow
-└── e-paper/                   # Downloaded newspapers (auto-generated)
-    ├── DEC25/
-    │   ├── TH_2025-12-17.pdf
-    │   └── IE_2025-12-17.pdf
-    └── JAN26/
-        └── ...
+└── README.md                  # This file
 ```
 
 ## 🔧 Configuration
@@ -113,61 +107,63 @@ Edit `NEWSPAPERS` dict in [scraper.py](scraper.py):
 NEWSPAPERS = {
     "The Hindu": "TH",
     "Indian Express": "IE",
-    "Times of India": "TOI"  # Add more
+    "Times of India": "TOI"  # Add newspaper title and code
 }
 ```
 
-## 📊 How It Works
+The newspaper title must match exactly as it appears on the website.
 
-1. **Scrape Main Page**: Access IndiaGS homepage and locate target newspapers
-2. **Navigate Pages**: Click through intermediate ad/promo pages
-3. **Wait for Timer**: Handle 15-second countdown timer on download page
-4. **Extract PDF URL**: Parse JavaScript to get actual PDF download link
-5. **Download PDF**: Fetch PDF file via requests
-6. **Compress (Optional)**: Use pypdf to compress if available
-7. **Post to Discord**: Send embed with download info
-8. **Update History**: Track processed newspapers in JSON
-9. **Cleanup**: Delete old folders on 8th of each month
+## How It Works
 
-## 🛠️ Technologies
+1. **Scrape Homepage**: Access IndiaGS homepage and locate target newspapers
+2. **Extract Initial Links**: Get newspaper links from page (ad.php URLs)
+3. **Transform URLs**: Convert ad.php endpoints to pdf.php for direct access
+4. **Post to Discord**: Send newspaper link to configured webhook
+5. **Track History**: Save link with timestamp in nested month-date structure
+6. **Avoid Duplicates**: Check history to prevent re-posting same day
+
+## Technologies
 
 - **Python 3.11**: Core automation
-- **Selenium**: Web automation and scraping
-- **Requests**: HTTP requests for downloads
-- **pypdf**: PDF compression
-- **GitHub Actions**: Scheduled execution
-- **Discord Webhooks**: Notifications
+- **Selenium**: Web scraping and link extraction
+- **Requests**: HTTP requests for Discord webhooks
+- **GitHub Actions**: Scheduled daily execution
+- **Discord Webhooks**: Real-time link delivery
 
-## ⚠️ Important Notes
+## Important Notes
 
-- PDFs are stored in the repository (ensure you have enough storage)
-- GitHub free tier has 500MB storage - consider using Git LFS for larger files
-- The scraper respects the website's timer requirements
-- Fallback links are stored if PDF download fails
+- Only links are extracted and posted to Discord (no PDF files stored)
+- Minimal storage footprint - only JSON history file (~10KB)
+- Links may become stale over time as they are time-dependent
+- History is organized by month-year for easy reference
+- Runs via GitHub Actions without requiring local resources
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
-### No newspapers downloaded
+### No newspapers extracted
 
-- Check GitHub Actions logs
-- Verify Discord webhook URL is correct
-- Ensure the website structure hasn't changed
+- Check GitHub Actions logs for errors
+- Verify Discord webhook URL is correct and accessible
+- Ensure the website structure matches expected format
+- Check that newspaper titles in config match website exactly
 
-### Storage issues
+### Discord webhook errors
 
-- Enable Git LFS: `git lfs install && git lfs track "*.pdf"`
-- Or modify script to only post links (not store PDFs)
+- Verify webhook URL is valid and not expired
+- Check Discord server permissions allow webhook posts
+- Ensure DISCORD_WEBHOOK_URL secret is set in GitHub
 
 ### Chrome/ChromeDriver errors
 
-- GitHub Actions handles this automatically
-- For local testing, install Chrome and ChromeDriver manually
+- GitHub Actions handles ChromeDriver installation automatically
+- For local testing, webdriver-manager installs ChromeDriver automatically
+- Ensure no other Chrome instances are running on the system
 
-## 📜 License
+## License
 
 See [LICENSE](LICENSE) file.
 
-## 🤝 Contributing
+## Contributing
 
 Feel free to open issues or submit PRs for improvements!
 
