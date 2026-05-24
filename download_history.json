@@ -19,6 +19,16 @@
         "pdf_url": "https://www.indiags.com/newspaper/pdf.php?file=uploads%2FTH-+Delhi+23-05.pdf",
         "timestamp": "2026-05-23T08:18:55.879690"
       }
+    },
+    "2026-05-24": {
+      "Indian Express": {
+        "pdf_url": "https://www.indiags.com/newspaper/pdf.php?file=uploads%2FINDIAN+EXPRESS+HD+Delhi+24%7E05%7E2026.pdf",
+        "timestamp": "2026-05-24T05:08:04.076991"
+      },
+      "The Hindu": {
+        "pdf_url": "https://www.indiags.com/newspaper/pdf.php?file=uploads%2FTHE+HINDU+HD+Delhi+Editable+Full+Edition+24%7E05%7E2026.pdf",
+        "timestamp": "2026-05-24T05:08:04.347493"
+      }
     }
   }
 }
