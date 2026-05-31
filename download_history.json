@@ -89,6 +89,16 @@
         "pdf_url": "https://www.indiags.com/newspaper/pdf.php?file=uploads%2FTHE+HINDU+HD+Delhi+Editable+Full+Edition+30%7E05%7E2026.pdf",
         "timestamp": "2026-05-30T04:56:46.967047"
       }
+    },
+    "2026-05-31": {
+      "Indian Express": {
+        "pdf_url": "https://www.indiags.com/newspaper/pdf.php?file=uploads%2F%E0%A4%A6%E0%A5%88%E0%A4%A8%E0%A4%BF%E0%A4%95+%E0%A4%9C%E0%A4%BE%E0%A4%97%E0%A4%B0%E0%A4%A3+HD+%E0%A4%B0%E0%A4%BE%E0%A4%B7%E0%A5%8D%E0%A4%9F%E0%A5%8D%E0%A4%B0%E0%A5%80%E0%A4%AF+%E0%A4%B8%E0%A4%82%E0%A4%B8%E0%A5%8D%E0%A4%95%E0%A4%B0%E0%A4%A3+31%7E05%7E2026.pdf",
+        "timestamp": "2026-05-31T05:25:00.557931"
+      },
+      "The Hindu": {
+        "pdf_url": "https://www.indiags.com/newspaper/pdf.php?file=uploads%2FTHE+HINDU+HD+Delhi+Editable+Full+Edition+31%7E05%7E2026.pdf",
+        "timestamp": "2026-05-31T05:25:00.805639"
+      }
     }
   }
 }
