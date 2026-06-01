@@ -100,5 +100,17 @@
         "timestamp": "2026-05-31T05:25:00.805639"
       }
     }
+  },
+  "06-2026": {
+    "2026-06-01": {
+      "Indian Express": {
+        "pdf_url": "https://www.indiags.com/newspaper/pdf.php?file=uploads%2FINDIAN+EXPRESS+HD+Delhi+01%7E06%7E2026.pdf",
+        "timestamp": "2026-06-01T06:11:47.228398"
+      },
+      "The Hindu": {
+        "pdf_url": "https://www.indiags.com/newspaper/pdf.php?file=uploads%2FTHE+HINDU+HD+Delhi+Editable+Full+Edition+01%7E06%7E2026.pdf",
+        "timestamp": "2026-06-01T06:11:47.447036"
+      }
+    }
   }
 }
