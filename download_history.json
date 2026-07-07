@@ -233,6 +233,16 @@
         "pdf_url": "https://www.indiags.com/newspaper/pdf.php?file=uploads%2FTHE+HINDU+HD+Delhi+Editable+Full+Edition+02%7E07%7E2026.pdf",
         "timestamp": "2026-07-02T11:40:26.041850"
       }
+    },
+    "2026-07-07": {
+      "Indian Express": {
+        "pdf_url": "https://www.indiags.com/newspaper/pdf.php?file=uploads%2FINDIAN+EXPRESS+HD+Delhi+07%7E07%7E2026.pdf",
+        "timestamp": "2026-07-07T05:00:09.601313"
+      },
+      "The Hindu": {
+        "pdf_url": "https://www.indiags.com/newspaper/pdf.php?file=uploads%2FTHE+HINDU+HD+Delhi+Editable+Full+Edition+07%7E07%7E2026.pdf",
+        "timestamp": "2026-07-07T05:00:10.065283"
+      }
     }
   }
 }
