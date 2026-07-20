@@ -303,6 +303,16 @@
         "pdf_url": "https://www.indiags.com/newspaper/pdf.php?file=uploads%2Fthofficial19.pdf",
         "timestamp": "2026-07-19T04:27:01.774612"
       }
+    },
+    "2026-07-20": {
+      "Indian Express": {
+        "pdf_url": "https://www.indiags.com/newspaper/pdf.php?file=uploads%2Fie20.pdf",
+        "timestamp": "2026-07-20T11:53:19.797699"
+      },
+      "The Hindu": {
+        "pdf_url": "https://www.indiags.com/newspaper/pdf.php?file=uploads%2Fth20.pdf",
+        "timestamp": "2026-07-20T11:53:20.178645"
+      }
     }
   }
 }
