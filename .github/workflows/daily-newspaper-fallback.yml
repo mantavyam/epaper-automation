@@ -1,18 +1,13 @@
-name: Daily Editorial Extraction (Primary)
+name: Daily Editorial Extraction (Fallback)
 
 on:
-  schedule:
-    # Run daily at 6:00 AM and 2:30 PM IST
-    - cron: '00 1,9 * * *'
-
-  workflow_dispatch:  # Allow manual trigger
+  workflow_dispatch:  # Triggered by the primary workflow on failure, or manually
 
 permissions:
   contents: write
-  actions: write
 
 jobs:
-  extract-editorial:
+  extract-editorial-fallback:
     runs-on: ubuntu-latest
 
     steps:
@@ -27,17 +22,21 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
+      - name: Install Tesseract OCR
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tesseract-ocr
+
       - name: Install dependencies
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run primary editorial extraction
-        id: extract
+      - name: Run fallback editorial extraction
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
-          python scraper.py
+          python fallback_scraper.py
 
       - name: Commit and push changes
         if: always()
@@ -50,23 +49,16 @@ jobs:
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "Editorial Update (primary) - $(date +'%Y-%m-%d')"
+            git commit -m "Editorial Update (fallback) - $(date +'%Y-%m-%d')"
             git push
           fi
         continue-on-error: true
-
-      - name: Trigger fallback workflow
-        if: failure() && steps.extract.outcome == 'failure'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh workflow run daily-newspaper-fallback.yml
 
       - name: Upload artifacts (on failure)
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: error-logs
+          name: fallback-error-logs
           path: |
             *.log
             *.html

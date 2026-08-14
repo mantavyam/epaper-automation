@@ -1,249 +1,186 @@
 #!/usr/bin/env python3
 """
-E-Newspaper Link Extractor Script for IndiaGS
-Extracts The Hindu and The Indian Express newspaper links daily
-Posts links to Discord webhook for archival and access
+Primary E-Newspaper Editorial Extractor (preppyq.in)
+
+Fetches today's The Hindu (International edition) PDF from preppyq.in,
+locates the Editorial page, crops the two main articles as PNGs, and
+posts them plus the single editorial-page PDF to Discord.
+
+No browser automation: the source is a static WordPress page, fetched
+and parsed with requests/BeautifulSoup.
+
+Falls back to daily-newspaper-fallback.yml (dispatched by the workflow)
+if this fails or the source table doesn't have today's link yet.
 """
 
 import os
-import json
-import time
-import re
-import requests
-from datetime import datetime
-from urllib.parse import urljoin
+import sys
 import logging
+from datetime import datetime
 
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from selenium.common.exceptions import NoSuchElementException
-from webdriver_manager.chrome import ChromeDriverManager
+import requests
+import fitz  # PyMuPDF
+from bs4 import BeautifulSoup
 
-# Configuration
-BASE_URL = "https://www.indiags.com/epaper-pdf-download"
-HISTORY_FILE = "download_history.json"
-DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "")
+import common
+import editorial
 
-# Newspapers to track
-NEWSPAPERS = {
-    "The Hindu": "TH",
-    "Indian Express": "IE"
-}
+BASE_URL = "https://preppyq.in/the-hindu-newspaper/"
+HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+PAPER_NAME = "The Hindu"
 
-# Setup logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
-class NewspaperDownloader:
-    """Handles the newspaper link extraction and delivery"""
-    
-    def __init__(self):
-        self.history = self.load_history()
-        self.today = datetime.now()
-        self.driver = None
-        
-    def setup_driver(self):
-        """Initialize headless Chrome driver"""
-        chrome_options = Options()
-        chrome_options.add_argument("--headless")
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-dev-shm-usage")
-        chrome_options.add_argument("--disable-gpu")
-        chrome_options.add_argument("--window-size=1920,1080")
-        
-        # Use webdriver-manager to automatically handle ChromeDriver
-        service = Service(ChromeDriverManager().install())
-        self.driver = webdriver.Chrome(service=service, options=chrome_options)
-        logger.info("Chrome driver initialized")
-        
-    def close_driver(self):
-        """Close the browser"""
-        if self.driver:
-            self.driver.quit()
-            logger.info("Chrome driver closed")
-    
-    def load_history(self):
-        """Load download history from JSON file"""
-        if os.path.exists(HISTORY_FILE):
-            try:
-                with open(HISTORY_FILE, 'r') as f:
-                    return json.load(f)
-            except json.JSONDecodeError:
-                logger.warning("Invalid history file, creating new one")
-                return {}
-        return {}
-    
-    def save_history(self):
-        """Save download history to JSON file"""
-        with open(HISTORY_FILE, 'w') as f:
-            json.dump(self.history, f, indent=2)
-        logger.info("History saved")
-    
-    def transform_ad_url_to_pdf(self, ad_url):
-        """Transform ad.php URLs to pdf.php URLs"""
-        pdf_url = re.sub(r'/newspaper/ad\.php', '/newspaper/pdf.php', ad_url)
-        if pdf_url != ad_url:
-            logger.info(f"Transformed URL: ad.php -> pdf.php")
-            return pdf_url
-        return ad_url
-    
-    def get_newspaper_links(self):
-        """Scrape the main page to get newspaper links"""
-        logger.info(f"Accessing main page: {BASE_URL}")
-        self.driver.get(BASE_URL)
-        
-        # Wait for page to load
-        time.sleep(3)
-        
-        newspaper_links = {}
-        target_newspapers = set(NEWSPAPERS.keys())
-        
-        try:
-            # Find all newspaper items
-            pdf_items = self.driver.find_elements(By.CLASS_NAME, "pdf-item")
-            
-            for item in pdf_items:
-                try:
-                    # Get newspaper title
-                    title_elem = item.find_element(By.CLASS_NAME, "card-d-s-title")
-                    title = title_elem.text.strip()
-                    
-                    # Check if it's one of our target newspapers
-                    if title in target_newspapers and title not in newspaper_links:
-                        # Get the Read link
-                        read_link = item.find_element(By.CLASS_NAME, "btn-read")
-                        href = read_link.get_attribute("href")
-                        newspaper_links[title] = urljoin(BASE_URL, href)
-                        logger.info(f"Found {title}: {href}")
-                            
-                except NoSuchElementException:
-                    continue
-            
-        except Exception as e:
-            logger.error(f"Error getting newspaper links: {e}")
-        
-        return newspaper_links
-    
+def find_today_editions(today):
+    """Parse preppyq's table for today's Hindu edition links.
 
-    
-    def post_to_discord(self, newspaper_name, pdf_url):
-        """Post newspaper link to Discord via webhook"""
-        if not DISCORD_WEBHOOK_URL:
-            logger.warning("Discord webhook URL not configured")
-            return False
-        
-        try:
-            date_str = self.today.strftime("%d %B %Y")
-            
-            # Prepare embed
-            embed = {
-                "title": f"{newspaper_name} - {date_str}",
-                "color": 0x3498db if "Hindu" in newspaper_name else 0xe74c3c,
-                "timestamp": self.today.isoformat(),
-                "description": "Link extracted and ready to view",
-                "fields": [
-                    {
-                        "name": "View PDF",
-                        "value": pdf_url,
-                        "inline": False
-                    }
-                ],
-                "footer": {
-                    "text": "E-Newspaper Link Extractor"
-                }
-            }
-            
-            payload = {
-                "embeds": [embed]
-            }
-            
-            response = requests.post(DISCORD_WEBHOOK_URL, json=payload, timeout=10)
-            response.raise_for_status()
-            
-            logger.info(f"Posted to Discord: {newspaper_name}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error posting to Discord: {e}")
-            return False
-    
-    def process_newspaper(self, newspaper_name, initial_url):
-        """Process a single newspaper link extraction"""
-        date_key = self.today.strftime("%Y-%m-%d")
-        month_key = self.today.strftime("%m-%Y")
-        
-        # Check if already processed today
-        if month_key in self.history:
-            if date_key in self.history[month_key]:
-                if newspaper_name in self.history[month_key][date_key]:
-                    logger.info(f"{newspaper_name} already processed today")
-                    return
-        
-        logger.info(f"Processing {newspaper_name}...")
-        
-        # Transform ad.php URL to pdf.php
-        pdf_url = self.transform_ad_url_to_pdf(initial_url)
-        
-        # Post to Discord
-        self.post_to_discord(newspaper_name, pdf_url)
-        
-        # Update history with nested structure
-        if month_key not in self.history:
-            self.history[month_key] = {}
-        if date_key not in self.history[month_key]:
-            self.history[month_key][date_key] = {}
-        
-        self.history[month_key][date_key][newspaper_name] = {
-            "pdf_url": pdf_url,
-            "timestamp": datetime.now().isoformat()
-        }
-        
-        self.save_history()
-        logger.info(f"Successfully extracted and posted {newspaper_name}")
-    
-    def run(self):
-        """Main execution flow"""
-        logger.info("=== E-Newspaper Link Extraction Started ===")
-        
-        try:
-            # Setup
-            self.setup_driver()
-            
-            # Get newspaper links from main page
-            newspaper_links = self.get_newspaper_links()
-            
-            if not newspaper_links:
-                logger.error("No newspaper links found")
-                return
-            
-            # Process each newspaper
-            for newspaper_name, url in newspaper_links.items():
-                try:
-                    self.process_newspaper(newspaper_name, url)
-                except Exception as e:
-                    logger.error(f"Error processing {newspaper_name}: {e}")
-                    continue
-            
-            logger.info("=== E-Newspaper Link Extraction Completed ===")
-            
-        except Exception as e:
-            logger.error(f"Fatal error: {e}")
-            raise
-        
-        finally:
-            self.close_driver()
+    Returns a dict like {"International": url, "Delhi": url} -- whichever
+    editions are present for today's date. Missing editions are simply
+    absent from the dict.
+    """
+    r = requests.get(BASE_URL, headers=HEADERS, timeout=30)
+    r.raise_for_status()
+    soup = BeautifulSoup(r.text, "html.parser")
+
+    tables = soup.find_all("table")
+    if not tables:
+        raise RuntimeError("No tables found on preppyq page")
+
+    date_tag = today.strftime("%d-%m-%Y")
+    editions = {}
+    for tr in tables[0].find_all("tr"):
+        tds = tr.find_all("td")
+        if len(tds) != 2:
+            continue
+        label = tds[0].get_text(strip=True)
+        if date_tag not in label:
+            continue
+        a = tds[1].find("a")
+        if not a or not a.get("href"):
+            continue
+        for edition in ("International", "Delhi"):
+            if edition in label:
+                editions[edition] = a["href"]
+
+    return editions
+
+
+def process():
+    today = datetime.now()
+    date_key = today.strftime("%Y-%m-%d")
+    month_key = today.strftime("%m-%Y")
+
+    history = common.load_history()
+    if common.already_processed(history, date_key, month_key, PAPER_NAME):
+        logger.info("%s already processed today", PAPER_NAME)
+        return True
+
+    editions = find_today_editions(today)
+    if not editions:
+        logger.error("Today's link not found on preppyq -- source may be stale")
+        return False
+
+    # Prefer International (fewer ads) for extraction; fall back to whatever
+    # edition is present. Both edition links (if available) are still
+    # delivered as-is -- they're persistent, static-hosted URLs.
+    extract_edition = "International" if "International" in editions else next(iter(editions))
+    pdf_url = editions[extract_edition]
+
+    logger.info("Downloading %s edition: %s", extract_edition, pdf_url)
+    r = requests.get(pdf_url, headers=HEADERS, timeout=60)
+    r.raise_for_status()
+
+    artifact_dir = common.artifact_dir_for(date_key)
+    raw_pdf_path = os.path.join(
+        artifact_dir, common.dated_filename(PAPER_NAME, "FULL", today, "pdf")
+    )
+    with open(raw_pdf_path, "wb") as f:
+        f.write(r.content)
+
+    doc = fitz.open(raw_pdf_path)
+    page_idx = editorial.locate_editorial_page_text(doc)
+
+    if page_idx is None:
+        logger.info("No Editorial page found today -- likely Sunday/holiday, skipping")
+        os.remove(raw_pdf_path)
+        common.record_history(
+            history, date_key, month_key, PAPER_NAME,
+            {"status": "skipped_not_published", "timestamp": datetime.now().isoformat()},
+        )
+        return True
+
+    single_pdf_path = os.path.join(
+        artifact_dir, common.dated_filename(PAPER_NAME, "EDITORIAL", today, "pdf")
+    )
+    editorial.extract_single_page_pdf(doc, page_idx, single_pdf_path)
+
+    article_pngs = editorial.extract_hindu_articles(doc, page_idx)
+    article_paths = []
+    if not article_pngs:
+        full_png = editorial.render_full_page_png(doc, page_idx)
+        full_png_path = os.path.join(
+            artifact_dir, common.dated_filename(PAPER_NAME, "FULLPAGE", today, "png")
+        )
+        with open(full_png_path, "wb") as f:
+            f.write(full_png)
+        article_paths.append(full_png_path)
+    else:
+        for i, png_bytes in enumerate(article_pngs, start=1):
+            p = os.path.join(
+                artifact_dir, common.dated_filename(PAPER_NAME, "ART", today, "png", part=i)
+            )
+            with open(p, "wb") as f:
+                f.write(png_bytes)
+            article_paths.append(p)
+
+    doc.close()
+    os.remove(raw_pdf_path)
+
+    date_str = today.strftime("%d %B %Y")
+    files = [(os.path.basename(p), p) for p in article_paths]
+    files.append((os.path.basename(single_pdf_path), single_pdf_path))
+
+    edition_lines = "\n".join(
+        f"{edition}: {url}" for edition, url in editions.items()
+    )
+    content = (
+        f"**{PAPER_NAME} Editorial** -- {date_str}\n"
+        f"(extracted from {extract_edition} edition)\n\n"
+        f"Full e-paper PDFs:\n{edition_lines}"
+    )
+
+    posted = common.post_discord(
+        content=content,
+        embed_title=f"{PAPER_NAME} Editorial - {date_str}",
+        embed_color=0x3498DB,
+        file_paths=files,
+        date_str=date_str,
+    )
+
+    common.record_history(
+        history, date_key, month_key, PAPER_NAME,
+        {
+            "status": "posted" if posted else "post_failed",
+            "edition_urls": editions,
+            "extracted_from": extract_edition,
+            "editorial_page_index": page_idx,
+            "artifact_dir": artifact_dir,
+            "timestamp": datetime.now().isoformat(),
+        },
+    )
+
+    common.cleanup_stale_artifacts()
+    return posted
 
 
 def main():
-    """Entry point"""
-    downloader = NewspaperDownloader()
-    downloader.run()
+    logger.info("=== Primary Editorial Extraction Started ===")
+    ok = process()
+    logger.info("=== Primary Editorial Extraction %s ===", "Completed" if ok else "Failed")
+    if not ok:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
