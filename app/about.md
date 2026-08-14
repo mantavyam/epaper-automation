@@ -4,18 +4,6 @@ title: About
 permalink: /about/
 ---
 
-Swiss is a bold Jekyll theme inspired by Swiss design and the works of Massimo Vignelli. This theme lends itself well to sites heavy on written content.
+Daily archive of editorial pages from **The Hindu** and **Indian Express**, published automatically after each run of the [epaper-automation](https://github.com/{{ site.github_username }}/{{ site.github_repo }}) workflows.
 
-### Features:
-* Mobile-first design ensures this theme performs fastest on mobile while scaling elegantly to desktop-size screens.
-* Designed for blogs and sites heavy on written content, with bold typography styles, homepage summaries, and previous/next snippets.
-* Supports a wide range of HTML elements and markdown.
-* Flexible styles that can be reused for customization without adding additional CSS.
-* Simple styling for code snippets (if you want something with syntax highlighting, checkout ....)
-* Dynamically generated navigation links. See docs below for adding pages with specific post category for-loops.
-
-## Themes
-
-## Browser Support
-
-## Installation
+Each entry links to that day's single-page editorial PDF, and for The Hindu, the two main articles cropped out as images. Links point directly at the files committed to the repo — they're kept for 7 days, after which they're pruned to keep the repo lean. Expired links and images are marked as such rather than shown broken.

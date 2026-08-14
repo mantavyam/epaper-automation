@@ -24,10 +24,12 @@ from bs4 import BeautifulSoup
 
 import common
 import editorial
+import site_publish
 
 BASE_URL = "https://preppyq.in/the-hindu-newspaper/"
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
 PAPER_NAME = "The Hindu"
+PAPER_CODE = "TH"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -159,6 +161,14 @@ def process():
         date_str=date_str,
     )
 
+    site_publish.publish_post(
+        PAPER_NAME, PAPER_CODE, today,
+        editorial_pdf_path=single_pdf_path,
+        article_image_paths=article_paths,
+        edition_urls=editions,
+        source_label="primary",
+    )
+
     common.record_history(
         history, date_key, month_key, PAPER_NAME,
         {
@@ -172,6 +182,7 @@ def process():
     )
 
     common.cleanup_stale_artifacts()
+    common.cleanup_stale_posts()
     return posted
 
 

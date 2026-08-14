@@ -1,2 +1,9 @@
 source "https://rubygems.org"
-gemspec
+
+gem "jekyll", "~> 4.3"
+gem "webrick", "~> 1.8"
+
+# Pinned to the pure-Ruby SCSS converter, not the default sass-embedded
+# (which shells out to a native binary -- unreliable under QEMU/ARM
+# emulation, and one less moving part in CI generally).
+gem "jekyll-sass-converter", "~> 2.0"

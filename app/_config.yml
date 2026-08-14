@@ -13,12 +13,12 @@
 # you will see them accessed via {{ site.title }}, {{ site.github_repo }}, and so on.
 # You can create any custom variable you would like, and they will be accessible
 # in the templates via {{ site.myvariable }}.
-title: Swiss Jekyll Theme
-description: A bold typographic theme inspired by Swiss design.
-baseurl: "" # the subpath of your site, e.g. /blog
-url: "" # the base hostname & protocol for your site, e.g. http://example.com
-github_repo: jekyll # the GitHub repo name for your project
-github_username: jekyll
+title: E-Paper Editorial Archive
+description: Daily editorial pages and articles from The Hindu and Indian Express.
+baseurl: "/epaper-automation" # the subpath of your site, e.g. /blog
+url: "https://mantavyam.github.io" # the base hostname & protocol for your site
+github_repo: epaper-automation # the GitHub repo name for your project
+github_username: mantavyam
 
 # Optional social link, you can choose from the following options:
 # twitter (default), instagram, medium, or dribbble

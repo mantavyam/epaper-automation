@@ -1,0 +1,28 @@
+<script>
+// Artifacts (editorial PDFs/images) live in the repo's artifacts/ folder
+// and are pruned after 7 days. Their pages here link to
+// raw.githubusercontent.com directly rather than copies -- once a file is
+// pruned, that link 404s. Images fail visibly via onerror (below);
+// PDF links need an explicit HEAD check since there's no load-failure
+// event for <a> tags.
+function handleArtifactError(el) {
+  el.onerror = null;
+  el.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='500'%3E%3Crect width='100%25' height='100%25' fill='%231a1a1a'/%3E%3Ctext x='50%25' y='50%25' fill='%23ffffff' font-family='sans-serif' font-size='24' text-anchor='middle' dominant-baseline='middle'%3EThis edition has expired%3C/text%3E%3C/svg%3E";
+  el.alt = "This edition has expired (7-day retention window) and is no longer available.";
+  el.classList.add("expired-artifact");
+}
+
+document.addEventListener("DOMContentLoaded", function () {
+  document.querySelectorAll("a[data-check-expiry]").forEach(function (el) {
+    fetch(el.href, { method: "HEAD" })
+      .then(function (res) {
+        if (!res.ok) throw new Error("not ok");
+      })
+      .catch(function () {
+        el.textContent = "This PDF has expired (7-day retention window)";
+        el.classList.add("expired-artifact");
+        el.removeAttribute("href");
+      });
+  });
+});
+</script>

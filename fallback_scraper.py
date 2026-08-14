@@ -29,6 +29,7 @@ from bs4 import BeautifulSoup
 
 import common
 import editorial
+import site_publish
 
 BASE_URL = "https://www.indiags.com/epaper-pdf-download"
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
@@ -38,6 +39,7 @@ PAPERS = {
     "The Hindu": ("The Hindu", "text"),
     "Indian Express": ("Indian Express", "ocr"),
 }
+PAPER_CODES = {"The Hindu": "TH", "Indian Express": "IE"}
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -146,6 +148,12 @@ def process_paper(session, site_title, display_name, mode, book_id, history, tod
         date_str=date_str,
     )
 
+    site_publish.publish_post(
+        display_name, PAPER_CODES[display_name], today,
+        editorial_pdf_path=single_pdf_path,
+        source_label="fallback",
+    )
+
     common.record_history(
         history, date_key, month_key, display_name,
         {
@@ -186,6 +194,7 @@ def main():
             overall_ok = False
 
     common.cleanup_stale_artifacts()
+    common.cleanup_stale_posts()
     logger.info("=== Fallback Editorial Extraction %s ===", "Completed" if overall_ok else "Completed with errors")
     if not overall_ok:
         sys.exit(1)

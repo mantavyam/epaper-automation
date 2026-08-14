@@ -2,7 +2,9 @@
 """Shared helpers for the primary and fallback extraction scripts."""
 
 import os
+import re
 import json
+import glob
 import shutil
 import logging
 from datetime import datetime, timedelta
@@ -14,7 +16,21 @@ logger = logging.getLogger(__name__)
 HISTORY_FILE = "download_history.json"
 ARTIFACTS_DIR = "artifacts"
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "")
-STALE_ARTIFACT_DAYS = 4
+STALE_ARTIFACT_DAYS = 7
+
+# owner/repo -- GitHub Actions sets this automatically; falls back to the
+# known repo slug for local runs.
+GITHUB_REPOSITORY = os.getenv("GITHUB_REPOSITORY", "mantavyam/epaper-automation")
+
+
+def raw_url(repo_relative_path):
+    """Build a raw.githubusercontent.com URL for a file committed to main.
+
+    Used to link the Jekyll site to artifacts without duplicating them into
+    the site source -- when the 7-day cleanup deletes the file, this link
+    404s, which is what the site's expiry handling detects.
+    """
+    return f"https://raw.githubusercontent.com/{GITHUB_REPOSITORY}/main/{repo_relative_path}"
 
 # Paper name -> short code used in artifact filenames, e.g. TH-EDITORIAL-14-08-26.pdf
 PAPER_CODES = {
@@ -84,6 +100,36 @@ def cleanup_stale_artifacts(days=STALE_ARTIFACT_DAYS):
         if folder_date < cutoff:
             shutil.rmtree(path)
             logger.info("Removed stale artifact folder: %s", path)
+
+
+POSTS_DIR = os.path.join("app", "_posts")
+_POST_DATE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})-")
+
+
+def cleanup_stale_posts(days=STALE_ARTIFACT_DAYS):
+    """Remove site posts whose linked artifacts have aged out.
+
+    Posts are kept on the same 7-day window as artifacts/ -- there's no
+    long-term archive, just a rolling week of history, so a post's links
+    are never left dangling for long enough to need the site's expiry
+    handling in the steady state (that stays as a safety net for the
+    transient gap within a single cleanup cycle).
+    """
+    if not os.path.isdir(POSTS_DIR):
+        return
+    cutoff = datetime.now().date() - timedelta(days=days)
+    for path in glob.glob(os.path.join(POSTS_DIR, "*.md")):
+        name = os.path.basename(path)
+        m = _POST_DATE_RE.match(name)
+        if not m:
+            continue
+        try:
+            post_date = datetime.strptime(m.group(1), "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        if post_date < cutoff:
+            os.remove(path)
+            logger.info("Removed stale site post: %s", path)
 
 
 def post_discord(content, embed_title, embed_color, file_paths, date_str):

@@ -137,3 +137,19 @@ code {
   }
 
 }
+
+// Editorial artifact images/links that have aged out of the 7-day
+// retention window (see app/_includes/expiry-check.html).
+.artifact-image {
+  max-width: 100%;
+  height: auto;
+  margin-bottom: $spacer-2;
+}
+
+a.expired-artifact,
+img.expired-artifact {
+  opacity: 0.6;
+  filter: grayscale(100%);
+  cursor: not-allowed;
+  pointer-events: none;
+}

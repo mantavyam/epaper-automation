@@ -73,6 +73,26 @@ Editorial-page location differs per paper because their PDFs are structured diff
 
 No per-article image cropping on this path — IE's flattened-raster pages have no vector rule data to key off (unlike the Hindu PDFs), so it's kept to the single editorial-page PDF only, delivered as a Discord attachment.
 
+## The site
+
+Both scripts also publish a Jekyll post (`site_publish.py`) after a successful extraction, so the same day's output is browsable on a small static site (`app/`, a customized [jekyll-swiss](https://github.com/broccolini/swiss) theme) in addition to landing in Discord.
+
+```mermaid
+flowchart LR
+    extract["extraction succeeds\n(scraper.py / fallback_scraper.py)"] --> post["site_publish.publish_post()\napp/_posts/YYYY-MM-DD-paper-editorial.md"]
+    post --> commit["workflow commits\napp/_posts + artifacts/"]
+    commit --> pagesbuild["pages.yml builds\n& deploys app/"]
+    pagesbuild --> site["GitHub Pages site\n/epaper/ archive, browsable by date"]
+
+    site -.->|"img onerror /\nfetch HEAD check"| rawcheck{"raw.githubusercontent.com\nfile still there?"}
+    rawcheck -->|yes| show["shows PDF link / image"]
+    rawcheck -->|no, 404| expired["swaps in\n'this edition has expired'"]
+```
+
+Posts don't duplicate the PDF/PNG files into the site — they link straight to `raw.githubusercontent.com/.../artifacts/...` on `main`. That keeps `app/` itself tiny (just markdown), at the cost of those links depending on the artifact still being in the repo. Since both `artifacts/` and `app/_posts/` are pruned on the same 7-day rolling window (`common.cleanup_stale_posts()`, alongside `cleanup_stale_artifacts()`), a post essentially never outlives its own artifact in steady state — the client-side expiry handling in `app/_includes/expiry-check.html` exists as a safety net for the brief window within a single cleanup cycle, not as the normal experience. When it does trigger: images swap to a placeholder via `onerror` (immediate, no request needed), and the editorial-PDF link runs a `fetch(..., {method: "HEAD"})` on page load and replaces itself with "This PDF has expired" if the request fails.
+
+Site is deployed by `.github/workflows/pages.yml` (Jekyll build via `ruby/setup-ruby` + `actions/deploy-pages`) on every push to `app/**`, or manually via `workflow_dispatch`. Browsing by date needs no custom code — `site.posts` is Jekyll's native reverse-chronological list; `/epaper/` (`app/epaper.html`) filters it to the `epaper` category.
+
 ## Repo layout
 
 ```
@@ -81,16 +101,22 @@ epaper-automation/
 ├── fallback_scraper.py                     # fallback: indiags.com
 ├── editorial.py                            # shared: page location + extraction
 ├── common.py                               # shared: history, Discord posting, cleanup
+├── site_publish.py                         # shared: writes app/_posts/ entries
 ├── download_history.json                   # per-paper daily dedup record
-├── artifacts/YYYY-MM-DD/                   # today's extracted PDFs/PNGs (auto-pruned)
+├── artifacts/YYYY-MM-DD/                   # today's extracted PDFs/PNGs (auto-pruned, 7 days)
 │   ├── TH-EDITORIAL-DD-MM-YY.pdf           # single-page editorial PDF
 │   ├── TH-ART1-DD-MM-YY.png                # article crop 1 (primary only)
 │   ├── TH-ART2-DD-MM-YY.png                # article crop 2 (primary only)
 │   └── IE-EDITORIAL-DD-MM-YY.pdf
+├── app/                                     # Jekyll site (jekyll-swiss theme)
+│   ├── _posts/YYYY-MM-DD-paper-editorial.md # one per paper per day (auto-pruned, 7 days)
+│   ├── epaper.html                          # /epaper/ -- browsable archive
+│   └── _includes/expiry-check.html          # client-side expired-artifact handling
 ├── requirements.txt
 └── .github/workflows/
     ├── daily-newspaper.yml                 # primary: cron + manual dispatch
-    └── daily-newspaper-fallback.yml        # fallback: manual dispatch only (or auto-triggered on primary failure)
+    ├── daily-newspaper-fallback.yml        # fallback: manual dispatch only (or auto-triggered on primary failure)
+    └── pages.yml                           # builds + deploys app/ to GitHub Pages
 ```
 
 ## Setup
@@ -98,6 +124,7 @@ epaper-automation/
 1. **Discord webhook** — Server Settings → Integrations → Webhooks → create one, copy the URL.
 2. **Repo secret** — Settings → Secrets and variables → Actions → add `DISCORD_WEBHOOK_URL`.
 3. Enable Actions on the repo. The primary workflow runs on its own cron; no further setup needed.
+4. **GitHub Pages** — Settings → Pages → set Source to "GitHub Actions" (one-time; `pages.yml` handles builds after that).
 
 For local runs, copy `.env.example` to `.env` or export `DISCORD_WEBHOOK_URL` directly, then:
 
@@ -116,15 +143,16 @@ Both workflows can be triggered independently of their schedule from the **Actio
 ```bash
 gh workflow run daily-newspaper.yml
 gh workflow run daily-newspaper-fallback.yml
+gh workflow run pages.yml
 ```
 
-The fallback is also dispatched automatically by the primary workflow's last step when the primary run fails.
+The fallback is also dispatched automatically by the primary workflow's last step when the primary run fails. `pages.yml` also runs automatically on every push that touches `app/**` (which every extraction run does, via the new post file), so a manual run of it is rarely needed.
 
 ## History and artifact lifecycle
 
 `download_history.json` is keyed `MM-YYYY -> YYYY-MM-DD -> paper name`, recording whether that paper was posted, skipped (no editorial published that day), or failed, plus which source/edition it came from. Both scripts check this before doing any work, so re-running a workflow the same day is a no-op for papers already posted.
 
-Extracted files land in `artifacts/YYYY-MM-DD/`, named `{PAPER_CODE}-{DOC_TYPE}[N]-DD-MM-YY.{ext}` (`TH` for The Hindu, `IE` for Indian Express; `EDITORIAL` for the single-page PDF, `ART1`/`ART2` for the primary workflow's article crops) so the paper, content, and date are readable from the filename alone. They're committed by the workflow. Every run also prunes any date folder older than 4 days, so the repo doesn't accumulate newspaper PDFs indefinitely.
+Extracted files land in `artifacts/YYYY-MM-DD/`, named `{PAPER_CODE}-{DOC_TYPE}[N]-DD-MM-YY.{ext}` (`TH` for The Hindu, `IE` for Indian Express; `EDITORIAL` for the single-page PDF, `ART1`/`ART2` for the primary workflow's article crops) so the paper, content, and date are readable from the filename alone. They're committed by the workflow. Every run also prunes any date folder older than **7 days**, and the corresponding `app/_posts/` entries on the same window, so the repo stays a rolling week of history rather than accumulating indefinitely.
 
 ## Dependencies
 
