@@ -1,7 +1,7 @@
 ---
 layout: category-post
 title: "Editorials of 15/08/2026"
-date: 2026-08-15 10:07:30 +0530
+date: 2026-08-15 10:19:43 +0530
 categories: epaper
 ---
 

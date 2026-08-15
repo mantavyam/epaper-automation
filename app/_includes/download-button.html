@@ -1,4 +1,1 @@
-<a href="{{ include.href }}" class="download-btn" {% if include.check_expiry %}data-check-expiry{% endif %} target="_blank" rel="noopener">
-  <img src="{{ '/assets/download.svg' | prepend: site.baseurl }}" alt="" class="download-icon" width="18" height="18">
-  <span>{{ include.label | default: "Download" }}</span>
-</a>
+<a href="{{ include.href }}" class="download-btn" {% if include.check_expiry %}data-check-expiry{% endif %} target="_blank" rel="noopener"><img src="{{ '/assets/download.svg' | prepend: site.baseurl }}" alt="" class="download-icon" width="18" height="18"><span>{{ include.label | default: "Download" }}</span></a>

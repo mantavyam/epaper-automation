@@ -117,7 +117,11 @@ def cleanup_stale_artifacts(days=STALE_ARTIFACT_DAYS):
 
 
 POSTS_DIR = os.path.join("app", "_posts")
-_POST_DATE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})-")
+# Only ever matches our own generated posts (site_publish._post_path),
+# e.g. 2026-08-15-editorials.md -- deliberately not "any dated .md file",
+# so this never touches hand-authored site content that happens to have a
+# date-prefixed filename (Jekyll's own convention for every post).
+_POST_DATE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})-editorials\.md$")
 
 
 def cleanup_stale_posts(days=STALE_ARTIFACT_DAYS):

@@ -20253,7 +20253,12 @@ const PDFViewerApplication = {
 initCom(PDFViewerApplication);
 PDFPrintServiceFactory.initGlobals(PDFViewerApplication);
 {
-  const HOSTED_VIEWER_ORIGINS = new Set(["null", "http://mozilla.github.io", "https://mozilla.github.io"]);
+  // Patched for self-hosting: PDF.js only exempts its own mozilla.github.io
+  // demo from the same-origin file check by default. We always pass URLs we
+  // construct ourselves (raw.githubusercontent.com links into our own repo,
+  // never arbitrary/user-supplied input), so allowlisting our own deployment
+  // origin here is the same trust model Mozilla applies to their own domain.
+  const HOSTED_VIEWER_ORIGINS = new Set(["null", "http://mozilla.github.io", "https://mozilla.github.io", "https://mantavyam.github.io", "http://localhost:4000"]);
   var validateFileURL = function (file) {
     if (!file) {
       return;
