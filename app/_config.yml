@@ -13,8 +13,8 @@
 # you will see them accessed via {{ site.title }}, {{ site.github_repo }}, and so on.
 # You can create any custom variable you would like, and they will be accessible
 # in the templates via {{ site.myvariable }}.
-title: E-Paper Editorial Archive
-description: Daily editorial pages and articles from The Hindu and Indian Express.
+title: Newspaper Editorials
+description: "For Personal Academic use by Exam Aspirants in India — Editorials only, sourced from Publicly available content, no resale or rights claimed. All rights belongs to its respective publisher."
 baseurl: "/epaper-automation" # the subpath of your site, e.g. /blog
 url: "https://mantavyam.github.io" # the base hostname & protocol for your site
 github_repo: epaper-automation # the GitHub repo name for your project
@@ -23,7 +23,7 @@ github_username: mantavyam
 # Optional social link, you can choose from the following options:
 # twitter (default), instagram, medium, or dribbble
 social_link: twitter
-social_username: jekyllrb
+social_username: mantavyam_
 
 # Set theme color here
 # Choose from: black (default), blue, gray, magenta, orange, red, white, and yellow.

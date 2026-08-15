@@ -26,6 +26,14 @@ import common
 POSTS_DIR = os.path.join("app", "_posts")
 PAPER_ORDER = ["TH", "IE"]
 
+DISCLAIMER_FOOTER = (
+    "\n\n---\n\n"
+    "*Shared for academic personal use, under provisions of fair dealing "
+    "Operating as non-profit resource in Public Good Will."
+    "(Copyright Act, 1957, §52). No rights claimed. For Takedown requests, "
+    "Read More — [full disclaimer]({{ '/about/' | prepend: site.baseurl }}).*"
+)
+
 _SECTION_RE = re.compile(
     r'<!-- paper-section:(\w+) -->\n'
     r'<div class="editorial-paper-section" markdown="1">\n\n'
@@ -149,6 +157,6 @@ def publish_post(paper_name, paper_code, today, editorial_pdf_path,
     body = "\n\n".join(wrapped)
 
     with open(post_path, "w") as f:
-        f.write(_front_matter(today) + "\n\n" + body + "\n")
+        f.write(_front_matter(today) + "\n\n" + body + DISCLAIMER_FOOTER + "\n")
 
     return post_path
