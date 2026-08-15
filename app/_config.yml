@@ -31,3 +31,9 @@ theme_color: black
 
 # Build settings
 markdown: kramdown
+permalink: /epaper/:day-:month-:year/
+# Jekyll normalizes every post date to the build machine's local timezone
+# before deriving permalink components -- pinning this to IST keeps
+# /epaper/DD-MM-YYYY/ correct regardless of which timezone actually runs
+# the build (GitHub Actions runners default to UTC).
+timezone: Asia/Kolkata

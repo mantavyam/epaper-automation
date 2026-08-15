@@ -2,8 +2,8 @@ name: Daily Editorial Extraction (Primary)
 
 on:
   schedule:
-    # Run daily at 6:00 AM and 2:30 PM IST
-    - cron: '00 1,9 * * *'
+    # Run daily at 7:00 PM IST (13:30 UTC)
+    - cron: '30 13 * * *'
 
   workflow_dispatch:  # Allow manual trigger
 
@@ -61,6 +61,15 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh workflow run daily-newspaper-fallback.yml
+
+      - name: Trigger site rebuild
+        # A GITHUB_TOKEN push (the commit above) does not trigger other
+        # workflows' `on: push` -- dispatch pages.yml explicitly instead.
+        if: steps.extract.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run pages.yml
 
       - name: Upload artifacts (on failure)
         if: failure()

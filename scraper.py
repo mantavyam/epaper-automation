@@ -16,7 +16,7 @@ if this fails or the source table doesn't have today's link yet.
 import os
 import sys
 import logging
-from datetime import datetime
+
 
 import requests
 import fitz  # PyMuPDF
@@ -70,7 +70,7 @@ def find_today_editions(today):
 
 
 def process():
-    today = datetime.now()
+    today = common.now_ist()
     date_key = today.strftime("%Y-%m-%d")
     month_key = today.strftime("%m-%Y")
 
@@ -109,7 +109,7 @@ def process():
         os.remove(raw_pdf_path)
         common.record_history(
             history, date_key, month_key, PAPER_NAME,
-            {"status": "skipped_not_published", "timestamp": datetime.now().isoformat()},
+            {"status": "skipped_not_published", "timestamp": common.now_ist().isoformat()},
         )
         return True
 
@@ -118,24 +118,19 @@ def process():
     )
     editorial.extract_single_page_pdf(doc, page_idx, single_pdf_path)
 
-    article_pngs = editorial.extract_hindu_articles(doc, page_idx)
+    # Article images are a bonus on top of the single-page PDF above, which
+    # is already saved and is the deliverable that must always go through.
+    # If this PDF doesn't carry the rule geometry article cropping needs
+    # (extract_hindu_articles never raises -- see its docstring), we just
+    # skip images entirely rather than force a substitute.
     article_paths = []
-    if not article_pngs:
-        full_png = editorial.render_full_page_png(doc, page_idx)
-        full_png_path = os.path.join(
-            artifact_dir, common.dated_filename(PAPER_NAME, "FULLPAGE", today, "png")
+    for i, png_bytes in enumerate(editorial.extract_hindu_articles(doc, page_idx), start=1):
+        p = os.path.join(
+            artifact_dir, common.dated_filename(PAPER_NAME, "ART", today, "png", part=i)
         )
-        with open(full_png_path, "wb") as f:
-            f.write(full_png)
-        article_paths.append(full_png_path)
-    else:
-        for i, png_bytes in enumerate(article_pngs, start=1):
-            p = os.path.join(
-                artifact_dir, common.dated_filename(PAPER_NAME, "ART", today, "png", part=i)
-            )
-            with open(p, "wb") as f:
-                f.write(png_bytes)
-            article_paths.append(p)
+        with open(p, "wb") as f:
+            f.write(png_bytes)
+        article_paths.append(p)
 
     doc.close()
     os.remove(raw_pdf_path)
@@ -166,7 +161,6 @@ def process():
         editorial_pdf_path=single_pdf_path,
         article_image_paths=article_paths,
         edition_urls=editions,
-        source_label="primary",
     )
 
     common.record_history(
@@ -177,7 +171,7 @@ def process():
             "extracted_from": extract_edition,
             "editorial_page_index": page_idx,
             "artifact_dir": artifact_dir,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": common.now_ist().isoformat(),
         },
     )
 

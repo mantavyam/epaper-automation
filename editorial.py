@@ -121,45 +121,46 @@ def extract_hindu_articles(doc, page_index, dpi=200):
     articles on this page, followed by a Letters-to-the-Editor block that
     is dropped unconditionally.
 
-    Returns a list of PNG bytes (empty if the rule geometry couldn't be
-    read confidently -- caller should fall back to the whole-page image).
+    Returns a list of PNG bytes -- always empty, never raises, if the page
+    doesn't carry usable vector rule geometry (a raster/flattened page like
+    Indian Express's, or any PDF that just doesn't match this rule layout).
+    Article images are a nice-to-have on top of the single-page PDF, which
+    is the deliverable that must always go through regardless -- so any
+    failure here degrades silently rather than aborting the caller's run.
     """
-    page = doc[page_index]
-    drawings = page.get_drawings()
+    try:
+        page = doc[page_index]
+        drawings = page.get_drawings()
 
-    sidebar_x = _find_sidebar_boundary(page, drawings)
-    content_x0 = sidebar_x
-    dividers = _find_content_dividers(page, drawings, content_x0)
+        sidebar_x = _find_sidebar_boundary(page, drawings)
+        content_x0 = sidebar_x
+        dividers = _find_content_dividers(page, drawings, content_x0)
 
-    if len(dividers) < 2:
-        logger.warning(
-            "editorial rule geometry unclear (found %d content dividers, need 2) "
-            "-- skipping per-article crop",
-            len(dividers),
-        )
+        if len(dividers) < 2:
+            logger.warning(
+                "editorial rule geometry unclear (found %d content dividers, need 2) "
+                "-- this PDF doesn't support article cropping, skipping",
+                len(dividers),
+            )
+            return []
+
+        # top of article 1 = top of the sidebar rule (roughly where the big
+        # headline starts), falling back to the page's own top margin
+        tall = [
+            d["rect"] for d in drawings
+            if d["rect"].height > page.rect.height * 0.7 and d["rect"].width < 3
+        ]
+        top_y = min((r.y0 for r in tall), default=page.rect.y0 + page.rect.height * 0.05)
+
+        bounds = [top_y] + [d.y0 for d in dividers[:2]]
+        zoom = dpi / 72
+        images = []
+        for y0, y1 in zip(bounds[:-1], bounds[1:]):
+            clip = fitz.Rect(content_x0, y0, page.rect.width, y1)
+            pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), clip=clip)
+            images.append(pix.tobytes("png"))
+
+        return images
+    except Exception as e:
+        logger.warning("Article extraction failed unexpectedly (%s) -- skipping, single-page PDF unaffected", e)
         return []
-
-    # top of article 1 = top of the sidebar rule (roughly where the big
-    # headline starts), falling back to the page's own top margin
-    tall = [
-        d["rect"] for d in drawings
-        if d["rect"].height > page.rect.height * 0.7 and d["rect"].width < 3
-    ]
-    top_y = min((r.y0 for r in tall), default=page.rect.y0 + page.rect.height * 0.05)
-
-    bounds = [top_y] + [d.y0 for d in dividers[:2]]
-    zoom = dpi / 72
-    images = []
-    for y0, y1 in zip(bounds[:-1], bounds[1:]):
-        clip = fitz.Rect(content_x0, y0, page.rect.width, y1)
-        pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), clip=clip)
-        images.append(pix.tobytes("png"))
-
-    return images
-
-
-def render_full_page_png(doc, page_index, dpi=200):
-    page = doc[page_index]
-    zoom = dpi / 72
-    pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom))
-    return pix.tobytes("png")

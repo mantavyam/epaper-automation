@@ -338,22 +338,6 @@
         "artifact_dir": "artifacts/2026-08-14",
         "timestamp": "2026-08-14T17:14:50.080378"
       }
-    },
-    "2026-08-15": {
-      "The Hindu": {
-        "status": "posted",
-        "source": "indiags_fallback",
-        "editorial_page_index": 11,
-        "artifact_dir": "artifacts/2026-08-15",
-        "timestamp": "2026-08-15T02:16:47.584353"
-      },
-      "Indian Express": {
-        "status": "posted",
-        "source": "indiags_fallback",
-        "editorial_page_index": 13,
-        "artifact_dir": "artifacts/2026-08-15",
-        "timestamp": "2026-08-15T02:17:13.589810"
-      }
     }
   }
 }

@@ -7,8 +7,12 @@ Used only when the primary (preppyq.in) source fails. Walks indiags'
 quiz-unlock redirect -- to reach a one-time-use direct PDF link, then
 extracts just the Editorial page and posts it to Discord.
 
-No article-image cropping here (that stays on the more reliable primary
-path); this just posts the single editorial-page PDF per paper.
+The Hindu's indiags PDF carries the same vector rule geometry as the
+primary source, so its two main articles are cropped the same way. Indian
+Express is single-page-PDF-only: its indiags PDF is a flattened raster
+page with no vector drawings and no reliably-detectable printed rule
+lines at any pixel threshold tested, so rule-based article cropping isn't
+viable there.
 
 Every step is a plain HTTP GET + HTML parse -- no browser automation.
 The "quiz"/15s-timer/popups on this site are pure client-side UI theater:
@@ -21,7 +25,7 @@ import sys
 import re
 import logging
 import urllib.parse
-from datetime import datetime
+
 
 import requests
 import fitz  # PyMuPDF
@@ -127,7 +131,7 @@ def process_paper(session, site_title, display_name, mode, book_id, history, tod
         os.remove(raw_pdf_path)
         common.record_history(
             history, date_key, month_key, display_name,
-            {"status": "skipped_not_published", "timestamp": datetime.now().isoformat()},
+            {"status": "skipped_not_published", "timestamp": common.now_ist().isoformat()},
         )
         doc.close()
         return True
@@ -136,22 +140,35 @@ def process_paper(session, site_title, display_name, mode, book_id, history, tod
         artifact_dir, common.dated_filename(display_name, "EDITORIAL", today, "pdf")
     )
     editorial.extract_single_page_pdf(doc, page_idx, single_pdf_path)
+
+    article_paths = []
+    if PAPER_CODES[display_name] == "TH":
+        for i, png_bytes in enumerate(editorial.extract_hindu_articles(doc, page_idx), start=1):
+            p = os.path.join(
+                artifact_dir, common.dated_filename(display_name, "ART", today, "png", part=i)
+            )
+            with open(p, "wb") as f:
+                f.write(png_bytes)
+            article_paths.append(p)
+
     doc.close()
     os.remove(raw_pdf_path)
 
     date_str = today.strftime("%d %B %Y")
+    files = [(os.path.basename(p), p) for p in article_paths]
+    files.append((os.path.basename(single_pdf_path), single_pdf_path))
     posted = common.post_discord(
         content=f"**{display_name} Editorial** -- {date_str} (via fallback source)",
         embed_title=f"{display_name} Editorial - {date_str}",
         embed_color=0xE74C3C,
-        file_paths=[(os.path.basename(single_pdf_path), single_pdf_path)],
+        file_paths=files,
         date_str=date_str,
     )
 
     site_publish.publish_post(
         display_name, PAPER_CODES[display_name], today,
         editorial_pdf_path=single_pdf_path,
-        source_label="fallback",
+        article_image_paths=article_paths or None,
     )
 
     common.record_history(
@@ -161,7 +178,7 @@ def process_paper(session, site_title, display_name, mode, book_id, history, tod
             "source": "indiags_fallback",
             "editorial_page_index": page_idx,
             "artifact_dir": artifact_dir,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": common.now_ist().isoformat(),
         },
     )
     return posted
@@ -169,7 +186,7 @@ def process_paper(session, site_title, display_name, mode, book_id, history, tod
 
 def main():
     logger.info("=== Fallback Editorial Extraction Started ===")
-    today = datetime.now()
+    today = common.now_ist()
     history = common.load_history()
     session = requests.Session()
     session.headers.update(HEADERS)

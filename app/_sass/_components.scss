@@ -144,6 +144,7 @@ code {
   max-width: 100%;
   height: auto;
   margin-bottom: $spacer-2;
+  border: 1px solid $color-border;
 }
 
 a.expired-artifact,
@@ -152,4 +153,49 @@ img.expired-artifact {
   filter: grayscale(100%);
   cursor: not-allowed;
   pointer-events: none;
+}
+
+.download-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: $spacer-1;
+  padding: 6px 14px;
+  border: 1px solid $color-body-text;
+  border-radius: 4px;
+  font-weight: bold;
+  font-size: 14px;
+  text-decoration: none !important;
+  color: $color-body-text;
+  background: transparent;
+  transition: background-color .15s, color .15s;
+
+  &:hover {
+    background: $color-body-text;
+    color: #fff;
+  }
+}
+
+.download-icon {
+  flex-shrink: 0;
+}
+
+.pdf-preview {
+  width: 100%;
+  height: 800px;
+  border: 1px solid $color-border;
+  margin: $spacer-2 0;
+
+  @media (max-width: $breakpoint-lg) {
+    height: 500px;
+  }
+}
+
+.editorial-paper-section {
+  margin-bottom: $spacer-4;
+  padding-bottom: $spacer-3;
+  border-bottom: 2px solid $color-body-text;
+
+  &:last-child {
+    border-bottom: 0;
+  }
 }

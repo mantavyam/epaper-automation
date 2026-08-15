@@ -11,7 +11,7 @@ Two independent GitHub Actions workflows, one primary and one fallback. Both are
 
 ```mermaid
 flowchart TD
-    cron["cron: twice daily"] --> primary["Primary workflow\ndaily-newspaper.yml"]
+    cron["cron: 7:00 PM IST daily"] --> primary["Primary workflow\ndaily-newspaper.yml"]
     manual1["workflow_dispatch\n(manual run)"] --> primary
     primary -->|"preppyq.in table parse"| hindu_pdf["The Hindu PDF\n(International + Delhi links)"]
     hindu_pdf --> locate1["locate Editorial page\n(text search)"]
@@ -71,27 +71,34 @@ Editorial-page location differs per paper because their PDFs are structured diff
 - **The Hindu** — same clean text layer as the primary source, same exact-line match on `Editorial`.
 - **Indian Express** — the PDF page is a single flattened JPEG with a broken, non-Unicode-mapped text layer (glyph-indexed font, unusable for search). Located instead by OCR: the top 20% of each page is rendered and read with `pytesseract`, matching a short standalone line reading `The Editorial Page`. The length check matters — the front page also carries a teaser banner ("*The Editorial Page: SC has nurtured environmental law...*") pointing readers to the real page, which contains the same phrase but as a long sentence with a colon, not a bare masthead line. Matching only short lines tells them apart reliably.
 
-No per-article image cropping on this path — IE's flattened-raster pages have no vector rule data to key off (unlike the Hindu PDFs), so it's kept to the single editorial-page PDF only, delivered as a Discord attachment.
+The Hindu's indiags PDF carries the same vector rule geometry as the primary source, so it gets the same two-article crop here. Indian Express stays single-page-PDF-only: its indiags PDF is a flattened raster page with no vector drawings, and no printed rule line is reliably detectable at the pixel level either (tested down to per-row dark-run analysis at 200 DPI — the section dividers visible on the printed page don't survive as a clean signal in the compressed raster). Rule-based article cropping just isn't viable there with either source.
 
 ## The site
 
-Both scripts also publish a Jekyll post (`site_publish.py`) after a successful extraction, so the same day's output is browsable on a small static site (`app/`, a customized [jekyll-swiss](https://github.com/broccolini/swiss) theme) in addition to landing in Discord.
+Both scripts publish into a single Jekyll post per date (`site_publish.py`), so the day's output — however many papers ran, from either source — lands on one page instead of one per paper, on a small static site (`app/`, a customized [jekyll-swiss](https://github.com/broccolini/swiss) theme) in addition to Discord.
 
 ```mermaid
 flowchart LR
-    extract["extraction succeeds\n(scraper.py / fallback_scraper.py)"] --> post["site_publish.publish_post()\napp/_posts/YYYY-MM-DD-paper-editorial.md"]
+    extract["extraction succeeds\n(scraper.py / fallback_scraper.py)"] --> post["site_publish.publish_post()\nmerges this paper's section into\napp/_posts/YYYY-MM-DD-editorials.md"]
     post --> commit["workflow commits\napp/_posts + artifacts/"]
-    commit --> pagesbuild["pages.yml builds\n& deploys app/"]
-    pagesbuild --> site["GitHub Pages site\n/epaper/ archive, browsable by date"]
+    commit --> dispatch["gh workflow run pages.yml\n(explicit dispatch --\na bot-token push doesn't\ntrigger pages.yml's own\non:push automatically)"]
+    dispatch --> pagesbuild["pages.yml builds\n& deploys app/"]
+    pagesbuild --> site["GitHub Pages site\n/epaper/DD-MM-YYYY/, one page\nper date, all papers"]
 
     site -.->|"img onerror /\nfetch HEAD check"| rawcheck{"raw.githubusercontent.com\nfile still there?"}
-    rawcheck -->|yes| show["shows PDF link / image"]
+    rawcheck -->|yes| show["shows PDF viewer / image"]
     rawcheck -->|no, 404| expired["swaps in\n'this edition has expired'"]
 ```
 
-Posts don't duplicate the PDF/PNG files into the site — they link straight to `raw.githubusercontent.com/.../artifacts/...` on `main`. That keeps `app/` itself tiny (just markdown), at the cost of those links depending on the artifact still being in the repo. Since both `artifacts/` and `app/_posts/` are pruned on the same 7-day rolling window (`common.cleanup_stale_posts()`, alongside `cleanup_stale_artifacts()`), a post essentially never outlives its own artifact in steady state — the client-side expiry handling in `app/_includes/expiry-check.html` exists as a safety net for the brief window within a single cleanup cycle, not as the normal experience. When it does trigger: images swap to a placeholder via `onerror` (immediate, no request needed), and the editorial-PDF link runs a `fetch(..., {method: "HEAD"})` on page load and replaces itself with "This PDF has expired" if the request fails.
+**One post per date, not per paper.** `app/_posts/YYYY-MM-DD-editorials.md` is built from marked-off per-paper sections (`<!-- paper-section:TH -->...<!-- /paper-section:TH -->`); each script re-runs only replaces its own paper's section, in a fixed order, so primary and fallback (and Hindu vs. Indian Express) never stomp on each other regardless of which ran first or how many times. URL is `/epaper/DD-MM-YYYY/` (`permalink: /epaper/:day-:month-:year/` in `_config.yml`), title "Editorials of DD/MM/YYYY". Content per paper: H1 paper name, H2 sections (Editions/Editorial/Articles as applicable), a download-button table (`app/_includes/download-button.html`, using `app/assets/download.svg`) for every downloadable file, and an inline PDF preview.
 
-Site is deployed by `.github/workflows/pages.yml` (Jekyll build via `ruby/setup-ruby` + `actions/deploy-pages`) on every push to `app/**`, or manually via `workflow_dispatch`. Browsing by date needs no custom code — `site.posts` is Jekyll's native reverse-chronological list; `/epaper/` (`app/epaper.html`) filters it to the `epaper` category.
+**PDF preview is a self-hosted PDF.js** (`app/assets/pdfjs/`, vendored from [mozilla/pdf.js](https://github.com/mozilla/pdf.js) releases, trimmed of source maps/sample files/most locales down to English + Hindi), not a plain `<iframe src="raw-url">`. Directly framing a `raw.githubusercontent.com` URL doesn't reliably render inline — GitHub serves raw content with headers that push browsers toward downloading rather than displaying it. PDF.js sidesteps that: the iframe points at our own `web/viewer.html?file=<url-encoded raw URL>`, and PDF.js fetches the PDF bytes itself and renders to canvas — `raw.githubusercontent.com` allows CORS, so the fetch works regardless of how the response would have behaved as a page navigation.
+
+Posts don't duplicate the PDF/PNG files into the site — they link straight to `raw.githubusercontent.com/.../artifacts/...` on `main`. That keeps `app/`'s per-day footprint tiny, at the cost of those links depending on the artifact still being in the repo. Since both `artifacts/` and `app/_posts/` are pruned on the same 7-day rolling window (`common.cleanup_stale_posts()`, alongside `cleanup_stale_artifacts()`), a post essentially never outlives its own artifact in steady state — the client-side expiry handling in `app/_includes/expiry-check.html` exists as a safety net for the brief window within a single cleanup cycle, not as the normal experience. When it does trigger: images swap to a placeholder via `onerror` (immediate, no request needed), and each download-button link runs a `fetch(..., {method: "HEAD"})` on page load and replaces itself with "This PDF has expired" if the request fails.
+
+Site is deployed by `.github/workflows/pages.yml` (Jekyll build via `ruby/setup-ruby` + `actions/deploy-pages`, `jekyll-sass-converter` pinned to the pure-Ruby v2 line rather than the default `sass-embedded` for one less native-binary dependency in CI) on every push to `app/**`, manually via `workflow_dispatch`, or explicitly dispatched by both daily workflows' last step (needed because their own commits are pushed with `GITHUB_TOKEN`, which GitHub deliberately excludes from triggering other workflows' `on: push`). Browsing by date needs no custom code — `site.posts` is Jekyll's native reverse-chronological list; `/epaper/` (`app/epaper.html`) filters it to the `epaper` category. All post/history timestamps go through `common.now_ist()` and `_config.yml`'s `timezone: Asia/Kolkata`, not the build host's own clock (GitHub Actions runners default to UTC) — Jekyll normalizes every post date to the *build machine's* local timezone before deriving permalink components, so without pinning this explicitly, a post published in the early IST morning can silently land on the wrong calendar day.
+
+**Article images**: The Hindu gets these from both sources (same vector-rule-geometry crop either way, since indiags' Hindu PDF carries the same drawn rule lines as the primary preppyq source). Indian Express is single-page-PDF-only — its indiags PDF is a flattened raster page with no vector drawings, and no printed rule line survives as a reliably-detectable signal in the compressed raster at the pixel level either (tested per-row dark-run analysis at 200 DPI scoped to the actual content bounding box), so rule-based article cropping isn't viable there with either source.
 
 ## Repo layout
 
@@ -105,13 +112,15 @@ epaper-automation/
 ├── download_history.json                   # per-paper daily dedup record
 ├── artifacts/YYYY-MM-DD/                   # today's extracted PDFs/PNGs (auto-pruned, 7 days)
 │   ├── TH-EDITORIAL-DD-MM-YY.pdf           # single-page editorial PDF
-│   ├── TH-ART1-DD-MM-YY.png                # article crop 1 (primary only)
-│   ├── TH-ART2-DD-MM-YY.png                # article crop 2 (primary only)
+│   ├── TH-ART1-DD-MM-YY.png                # article crop 1 (Hindu, both sources)
+│   ├── TH-ART2-DD-MM-YY.png                # article crop 2 (Hindu, both sources)
 │   └── IE-EDITORIAL-DD-MM-YY.pdf
 ├── app/                                     # Jekyll site (jekyll-swiss theme)
-│   ├── _posts/YYYY-MM-DD-paper-editorial.md # one per paper per day (auto-pruned, 7 days)
+│   ├── _posts/YYYY-MM-DD-editorials.md     # one per date, all papers (auto-pruned, 7 days)
 │   ├── epaper.html                          # /epaper/ -- browsable archive
-│   └── _includes/expiry-check.html          # client-side expired-artifact handling
+│   ├── _includes/download-button.html      # reusable download link + expiry check hook
+│   ├── _includes/expiry-check.html         # client-side expired-artifact handling
+│   └── assets/pdfjs/                        # vendored PDF.js (self-hosted inline viewer)
 ├── requirements.txt
 └── .github/workflows/
     ├── daily-newspaper.yml                 # primary: cron + manual dispatch

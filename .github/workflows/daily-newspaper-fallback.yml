@@ -5,6 +5,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   extract-editorial-fallback:
@@ -53,6 +54,15 @@ jobs:
             git push
           fi
         continue-on-error: true
+
+      - name: Trigger site rebuild
+        # A GITHUB_TOKEN push (the commit above) does not trigger other
+        # workflows' `on: push` -- dispatch pages.yml explicitly instead.
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run pages.yml
 
       - name: Upload artifacts (on failure)
         if: failure()

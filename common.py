@@ -8,6 +8,7 @@ import glob
 import shutil
 import logging
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import requests
 
@@ -17,6 +18,19 @@ HISTORY_FILE = "download_history.json"
 ARTIFACTS_DIR = "artifacts"
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "")
 STALE_ARTIFACT_DAYS = 7
+
+IST = ZoneInfo("Asia/Kolkata")
+
+
+def now_ist():
+    """Current wall-clock time in IST, timezone-aware.
+
+    GitHub Actions runners default to UTC -- using this everywhere "today"
+    is established (not plain datetime.now()) keeps artifact dates, history
+    keys, and site post dates consistent with the IST-framed cron schedule,
+    regardless of which timezone the host machine is actually in.
+    """
+    return datetime.now(IST)
 
 # owner/repo -- GitHub Actions sets this automatically; falls back to the
 # known repo slug for local runs.
@@ -88,7 +102,7 @@ def artifact_dir_for(date_str):
 def cleanup_stale_artifacts(days=STALE_ARTIFACT_DAYS):
     if not os.path.isdir(ARTIFACTS_DIR):
         return
-    cutoff = datetime.now().date() - timedelta(days=days)
+    cutoff = now_ist().date() - timedelta(days=days)
     for name in os.listdir(ARTIFACTS_DIR):
         path = os.path.join(ARTIFACTS_DIR, name)
         if not os.path.isdir(path):
@@ -117,7 +131,7 @@ def cleanup_stale_posts(days=STALE_ARTIFACT_DAYS):
     """
     if not os.path.isdir(POSTS_DIR):
         return
-    cutoff = datetime.now().date() - timedelta(days=days)
+    cutoff = now_ist().date() - timedelta(days=days)
     for path in glob.glob(os.path.join(POSTS_DIR, "*.md")):
         name = os.path.basename(path)
         m = _POST_DATE_RE.match(name)
@@ -144,7 +158,7 @@ def post_discord(content, embed_title, embed_color, file_paths, date_str):
     embed = {
         "title": embed_title,
         "color": embed_color,
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": now_ist().isoformat(),
         "footer": {"text": "E-Newspaper Editorial Extractor"},
     }
     payload = {"content": content, "embeds": [embed]}
