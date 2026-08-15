@@ -17,6 +17,11 @@ geckodriver
 # Distribution / packaging
 .Python
 build/
+# ...except the vendored PDF.js build/ (app/assets/pdfjs/build/) -- the
+# blanket rule above was matching PDF.js's own directory name and silently
+# excluding pdf.mjs/pdf.worker.mjs/pdf.sandbox.mjs from every commit.
+!app/assets/pdfjs/build/
+!app/assets/pdfjs/build/**
 develop-eggs/
 dist/
 downloads/
