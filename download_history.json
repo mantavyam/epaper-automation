@@ -351,6 +351,12 @@
         "artifact_dir": "artifacts/2026-08-15",
         "timestamp": "2026-08-15T22:07:07.716881+05:30"
       }
+    },
+    "2026-08-16": {
+      "The Hindu": {
+        "status": "skipped_not_published",
+        "timestamp": "2026-08-16T19:24:30.352829+05:30"
+      }
     }
   }
 }
