@@ -474,6 +474,19 @@
         "artifact_dir": "artifacts/2026-08-26",
         "timestamp": "2026-08-26T19:42:46.452981+05:30"
       }
+    },
+    "2026-08-29": {
+      "The Hindu": {
+        "status": "posted",
+        "edition_urls": {
+          "International": "https://preppyq.in/wp-content/uploads/2026/08/th.th_international.29_08_2026.pdf",
+          "Delhi": "https://preppyq.in/wp-content/uploads/2026/08/th.th_delhi.29_08_2026.pdf"
+        },
+        "extracted_from": "International",
+        "editorial_page_index": 5,
+        "artifact_dir": "artifacts/2026-08-29",
+        "timestamp": "2026-08-29T09:12:54.287031+05:30"
+      }
     }
   }
 }
