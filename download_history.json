@@ -507,6 +507,12 @@
         "status": "skipped_not_published",
         "timestamp": "2026-09-02T22:45:40.999973+05:30"
       }
+    },
+    "2026-09-03": {
+      "The Hindu": {
+        "status": "skipped_not_published",
+        "timestamp": "2026-09-03T22:37:07.267647+05:30"
+      }
     }
   }
 }
