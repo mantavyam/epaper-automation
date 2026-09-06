@@ -1,8 +1,9 @@
-requests>=2.31.0
+requests>=2.32.0
 # imported directly by scraper.build_session(); Retry(allowed_methods=)
 # is 1.26+ API, so pin rather than rely on requests' loose transitive range
 urllib3>=2.0
-beautifulsoup4>=4.12.0
+beautifulsoup4>=4.13.0
+# 1.24.0 is where `import pymupdf` replaced the legacy `import fitz` alias
 pymupdf>=1.24.0
-pytesseract>=0.3.10
-Pillow>=10.0.0
+pytesseract>=0.3.13
+Pillow>=11.0.0

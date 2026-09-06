@@ -30,7 +30,7 @@ import requests
 import urllib3.util.connection
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-import fitz  # PyMuPDF
+import pymupdf
 from bs4 import BeautifulSoup
 
 import common
@@ -48,7 +48,7 @@ PAPERS = {
 PAPER_CODES = {"The Hindu": "TH", "Indian Express": "IE"}
 SOURCE = "indiags"
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+common.configure_logging()
 logger = logging.getLogger(__name__)
 
 
@@ -302,7 +302,7 @@ def process_paper(session, site_title, display_name, mode, book_id, history, tod
     with open(raw_pdf_path, "wb") as f:
         f.write(r.content)
 
-    doc = fitz.open(raw_pdf_path)
+    doc = pymupdf.open(raw_pdf_path)
     if mode == "text":
         page_idx = editorial.locate_editorial_page_text(doc)
     else:

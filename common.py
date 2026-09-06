@@ -14,6 +14,32 @@ import requests
 
 logger = logging.getLogger(__name__)
 
+
+class _ISTFormatter(logging.Formatter):
+    """Log timestamps in IST rather than the host's clock.
+
+    Everything else in this system is IST-pinned -- history keys, artifact
+    dates, post dates, all via now_ist() -- but logging still used the
+    machine's local time, which is UTC on a GitHub Actions runner. That put
+    a 5h30m gap between a log line and the history entry it wrote, for no
+    reason other than the default.
+    """
+
+    def formatTime(self, record, datefmt=None):
+        dt = datetime.fromtimestamp(record.created, IST)
+        if datefmt:
+            return dt.strftime(datefmt)
+        return dt.strftime("%Y-%m-%d %H:%M:%S,") + f"{dt.microsecond // 1000:03d}"
+
+
+def configure_logging(level=logging.INFO):
+    """Root logging config for the scripts: INFO to stderr, IST timestamps."""
+    handler = logging.StreamHandler()
+    handler.setFormatter(_ISTFormatter("%(asctime)s - %(levelname)s - %(message)s"))
+    root = logging.getLogger()
+    root.handlers[:] = [handler]
+    root.setLevel(level)
+
 HISTORY_FILE = "download_history.json"
 ARTIFACTS_DIR = "artifacts"
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "")

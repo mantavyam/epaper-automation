@@ -19,7 +19,7 @@ import io
 import re
 import logging
 
-import fitz  # PyMuPDF
+import pymupdf
 
 logger = logging.getLogger(__name__)
 
@@ -54,9 +54,9 @@ def locate_editorial_page_ocr(doc, pattern=IE_HEADER_RE, top_frac=0.20, dpi=200,
 
     for i, page in enumerate(doc):
         rect = page.rect
-        clip = fitz.Rect(rect.x0, rect.y0, rect.x1, rect.y0 + rect.height * top_frac)
+        clip = pymupdf.Rect(rect.x0, rect.y0, rect.x1, rect.y0 + rect.height * top_frac)
         zoom = dpi / 72
-        pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), clip=clip)
+        pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), clip=clip)
         img = Image.open(io.BytesIO(pix.tobytes("png")))
         text = pytesseract.image_to_string(img)
         for line in text.split("\n"):
@@ -68,7 +68,7 @@ def locate_editorial_page_ocr(doc, pattern=IE_HEADER_RE, top_frac=0.20, dpi=200,
 
 def extract_single_page_pdf(doc, page_index, out_path):
     """Save one page of `doc` as its own compact PDF."""
-    single = fitz.open()
+    single = pymupdf.open()
     single.insert_pdf(doc, from_page=page_index, to_page=page_index)
     single.save(out_path, garbage=4, deflate=True)
     single.close()
@@ -156,8 +156,8 @@ def extract_hindu_articles(doc, page_index, dpi=200):
         zoom = dpi / 72
         images = []
         for y0, y1 in zip(bounds[:-1], bounds[1:]):
-            clip = fitz.Rect(content_x0, y0, page.rect.width, y1)
-            pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), clip=clip)
+            clip = pymupdf.Rect(content_x0, y0, page.rect.width, y1)
+            pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), clip=clip)
             images.append(pix.tobytes("png"))
 
         return images
