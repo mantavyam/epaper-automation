@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Shared helpers for the primary and fallback extraction scripts."""
+"""Shared helpers for the extraction script."""
 
 import os
 import re
@@ -91,6 +91,94 @@ def already_processed(history, date_key, month_key, paper_name):
 def record_history(history, date_key, month_key, paper_name, entry):
     history.setdefault(month_key, {}).setdefault(date_key, {})[paper_name] = entry
     save_history(history)
+
+
+SKIP_STREAK_LIMIT = 3
+SKIP_STREAK_WINDOW = 21
+
+
+def consecutive_skips(history, paper_name, today, source,
+                      window=SKIP_STREAK_WINDOW):
+    """Count back-to-back 'skipped_not_published' days before today.
+
+    A skip on its own is normal -- neither paper runs an editorial every
+    single day, and the pattern is irregular (Sunday 23-08-2026 published;
+    the Sundays either side of it didn't). What is *not* normal is a run of
+    them: the longest genuine streak on record is one day. So a streak is
+    the tell that our page locator broke rather than that the paper took a
+    day off -- exactly how the preppyq paywall hid for six straight green
+    runs, recording 'skipped_not_published' while downloading a Razorpay
+    payment page.
+
+    Two deliberate choices in the walk:
+
+      - Days with no entry at all are stepped over, not treated as the end
+        of the streak. The workflow doesn't run every day (dispatch-only
+        gaps are all over the history), and a gap says nothing either way.
+      - An entry from a *different* source ends the walk. A streak is
+        evidence about one source's locator, so switching sources resets
+        it -- without this, the first indiags run would inherit the dead
+        preppyq source's six-day streak and cry wolf immediately.
+    """
+    streak = 0
+    for back in range(1, window + 1):
+        day = (today.date() - timedelta(days=back))
+        entry = (
+            history.get(day.strftime("%m-%Y"), {})
+            .get(day.strftime("%Y-%m-%d"), {})
+            .get(paper_name)
+        )
+        if entry is None:
+            continue  # workflow didn't run that day -- no evidence either way
+        if entry.get("source") != source:
+            break  # different source: its streak isn't evidence about ours
+        if entry.get("status") != "skipped_not_published":
+            break
+        streak += 1
+    return streak
+
+
+REPORT_FILE = "failure-report.md"
+
+
+def report_problem(title, message, level="error"):
+    """Record a problem for the workflow to deliver -- don't deliver it here.
+
+    Deliberately not sent to Discord: that webhook points at a public
+    community server, and chain diagnostics (internal URLs, saved HTML
+    dumps, stack detail) have no business there. The webhook stays
+    single-purpose -- posting editorials.
+
+    Three sinks, none of which need a secret:
+      - a GitHub Actions annotation, so the failure is called out inline
+        on the run page and in the job log;
+      - $GITHUB_STEP_SUMMARY, so the run page itself explains what broke;
+      - REPORT_FILE, which the workflow turns into a GitHub Issue. That
+        issue is what actually reaches an inbox -- GitHub mails the full
+        body from notifications@github.com, alongside the automated
+        run-failure mail, whose template can't be customised.
+
+    Safe to call outside CI: the annotation is a harmless line of stdout
+    and the summary sink is skipped when the env var is absent.
+    """
+    (logger.error if level == "error" else logger.warning)("%s -- %s", title, message)
+
+    # Workflow commands are newline-delimited, so multi-line messages have
+    # to be escaped rather than printed raw.
+    escaped = (message.replace("%", "%25")
+                      .replace("\r", "%0D")
+                      .replace("\n", "%0A"))
+    print(f"::{level} title={title}::{escaped}", flush=True)
+
+    block = f"### {title}\n\n{message}\n\n"
+    for path in (REPORT_FILE, os.getenv("GITHUB_STEP_SUMMARY", "")):
+        if not path:
+            continue
+        try:
+            with open(path, "a") as f:
+                f.write(block)
+        except OSError as e:
+            logger.warning("Could not write problem report to %s: %s", path, e)
 
 
 def artifact_dir_for(date_str):

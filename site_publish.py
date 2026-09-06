@@ -3,11 +3,11 @@
 Publishes a Jekyll post for the app/ site whenever a scraper successfully
 extracts an editorial page.
 
-One post per date, not per paper -- primary and fallback (and Hindu vs.
-Indian Express) all write into the same app/_posts/YYYY-MM-DD-editorials.md,
-each owning a marked-off section that gets replaced on re-run without
-touching the others. Order on the page is fixed (PAPER_ORDER), independent
-of which script ran first.
+One post per date, not per paper -- The Hindu and Indian Express both
+write into the same app/_posts/YYYY-MM-DD-editorials.md, each owning a
+marked-off section that gets replaced on re-run without touching the
+other. Order on the page is fixed (PAPER_ORDER), independent of which
+paper was processed first.
 
 Posts link to artifacts via raw.githubusercontent.com rather than copying
 files into the site source -- see common.raw_url(). Both the artifacts and
@@ -65,21 +65,9 @@ def _front_matter(today):
 
 
 def _build_section(paper_name, paper_code, editorial_pdf_path,
-                    article_image_paths=None, edition_urls=None):
+                    article_image_paths=None):
     editorial_url = common.raw_url(editorial_pdf_path)
     lines = [f"# {paper_name}"]
-
-    if edition_urls:
-        lines.append("")
-        lines.append("## Editions")
-        lines.append("")
-        lines.append("| Edition | Download |")
-        lines.append("|---|---|")
-        for edition, url in edition_urls.items():
-            lines.append(
-                f'| {edition} | '
-                f'{{% include download-button.html href="{url}" label="{edition}" %}} |'
-            )
 
     lines.append("")
     lines.append("## Editorial")
@@ -130,7 +118,7 @@ def _build_section(paper_name, paper_code, editorial_pdf_path,
 
 
 def publish_post(paper_name, paper_code, today, editorial_pdf_path,
-                  article_image_paths=None, edition_urls=None):
+                  article_image_paths=None):
     """Write/update today's consolidated post with this paper's section."""
     os.makedirs(POSTS_DIR, exist_ok=True)
     post_path = _post_path(today)
@@ -143,7 +131,7 @@ def publish_post(paper_name, paper_code, today, editorial_pdf_path,
 
     sections[paper_code] = _build_section(
         paper_name, paper_code, editorial_pdf_path,
-        article_image_paths=article_image_paths, edition_urls=edition_urls,
+        article_image_paths=article_image_paths,
     )
 
     ordered_codes = [c for c in PAPER_ORDER if c in sections] + [
