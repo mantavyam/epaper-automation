@@ -525,6 +525,18 @@
         "status": "skipped_not_published",
         "timestamp": "2026-09-05T21:41:14.868101+05:30"
       }
+    },
+    "2026-09-06": {
+      "The Hindu": {
+        "status": "skipped_not_published",
+        "source": "indiags",
+        "timestamp": "2026-09-06T10:31:06.997361+05:30"
+      },
+      "Indian Express": {
+        "status": "skipped_not_published",
+        "source": "indiags",
+        "timestamp": "2026-09-06T10:31:55.589497+05:30"
+      }
     }
   }
 }
