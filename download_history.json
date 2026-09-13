@@ -592,6 +592,18 @@
         "artifact_dir": "artifacts/2026-09-12",
         "timestamp": "2026-09-12T21:57:30.895481+05:30"
       }
+    },
+    "2026-09-13": {
+      "The Hindu": {
+        "status": "skipped_not_published",
+        "source": "indiags",
+        "timestamp": "2026-09-13T22:31:50.434003+05:30"
+      },
+      "Indian Express": {
+        "status": "skipped_not_published",
+        "source": "indiags",
+        "timestamp": "2026-09-13T22:32:26.656253+05:30"
+      }
     }
   }
 }
