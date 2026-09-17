@@ -631,6 +631,21 @@
         "source": "indiags",
         "timestamp": "2026-09-16T23:12:27.578128+05:30"
       }
+    },
+    "2026-09-17": {
+      "The Hindu": {
+        "status": "skipped_not_published",
+        "source": "indiags",
+        "timestamp": "2026-09-17T23:13:00.411877+05:30"
+      },
+      "Indian Express": {
+        "status": "posted",
+        "source": "indiags",
+        "resolved_via": "url-shape|url-shape|unlock-fragment",
+        "editorial_page_index": 13,
+        "artifact_dir": "artifacts/2026-09-17",
+        "timestamp": "2026-09-17T23:13:28.381212+05:30"
+      }
     }
   }
 }
