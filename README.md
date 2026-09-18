@@ -141,7 +141,15 @@ Site is deployed by `.github/workflows/pages.yml` (Jekyll build via `ruby/setup-
 
 ### Discord gets a link, not files
 
-`notify.py` posts one message per day — the date, which papers ran, and a link to `/epaper/DD-MM-YYYY/`. No attachments. The site already hosts every artifact behind a PDF.js viewer, so a link carries strictly more than an upload did (both papers in one message, article crops inline, working previews) while keeping the message small.
+`notify.py` posts one message per day — the date, which papers ran, and a link to `/epaper/DD-MM-YYYY/`. Plain text: no attachments, and no hand-built embed either (Discord renders a link preview from the page's own metadata, so constructing one only added a coloured sidebar and a duplicate title):
+
+```
+Editorials - 18 September 2026
+The Hindu
+Indian Express
+
+https://mantavyam.github.io/epaper-automation/epaper/18-09-2026/
+``` The site already hosts every artifact behind a PDF.js viewer, so a link carries strictly more than an upload did (both papers in one message, article crops inline, working previews) while keeping the message small.
 
 This is why it is a *separate script from a later workflow step*. The link points at a page that doesn't exist until the post has been committed, built and deployed; posting it from the extraction step would hand readers a URL that 404s for a minute or two. So `scraper.py` writes `notify.json`, the workflow commits, dispatches `pages.yml` and **waits for that deploy to conclude**, and only then runs `notify.py`. If the deploy fails or never starts, the step is skipped rather than posting a dead link.
 

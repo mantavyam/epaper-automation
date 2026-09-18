@@ -316,37 +316,31 @@ def cleanup_stale_posts(days=STALE_ARTIFACT_DAYS):
             logger.info("Removed stale site post: %s", path)
 
 
-def post_discord(content, embed_title, embed_description, embed_url,
-                 embed_color=0x3498DB):
-    """Post a link to the site's page for the day. No attachments.
+def post_discord(content):
+    """Post a plain-text message to the Discord webhook.
 
-    Files used to be uploaded straight to the webhook. They aren't any
-    more: the site already hosts every artifact behind a PDF.js viewer,
-    so a link carries strictly more than an attachment did (both papers
-    in one message, article crops inline, working previews) and keeps the
-    message small. Note the linked post is pruned on the same 7-day window
-    as the artifacts -- older Discord links will 404, which is accepted.
+    Deliberately just `content` -- no embed object, no attachments. Files
+    used to be uploaded straight to the webhook; they aren't any more,
+    because the site hosts every artifact behind a PDF.js viewer and a link
+    carries strictly more than an upload did. The embed that briefly
+    replaced them was no better: Discord renders a link preview from the
+    page's own metadata anyway, so building one by hand only added a
+    coloured sidebar and a duplicate title.
+
+    Note the linked post is pruned on the same 7-day window as the
+    artifacts, so older Discord links will 404. That is accepted -- this is
+    a rolling week of history, not an archive.
     """
     if not DISCORD_WEBHOOK_URL:
         logger.warning("Discord webhook URL not configured")
         return False
 
-    payload = {
-        "content": content,
-        "embeds": [{
-            "title": embed_title,
-            "description": embed_description,
-            "url": embed_url,
-            "color": embed_color,
-            "timestamp": now_ist().isoformat(),
-            "footer": {"text": "E-Newspaper Editorial Extractor"},
-        }],
-    }
-
     try:
-        response = requests.post(DISCORD_WEBHOOK_URL, json=payload, timeout=30)
+        response = requests.post(
+            DISCORD_WEBHOOK_URL, json={"content": content}, timeout=30
+        )
         response.raise_for_status()
-        logger.info("Posted to Discord: %s", embed_url)
+        logger.info("Posted to Discord")
         return True
     except Exception as e:
         logger.error("Error posting to Discord: %s", e)
