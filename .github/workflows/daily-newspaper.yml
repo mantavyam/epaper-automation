@@ -49,6 +49,12 @@ jobs:
         run: |
           set -euo pipefail
 
+          # commit-tree below needs a committer identity, and this step runs
+          # before the one that commits to main -- so set it here rather than
+          # depending on step order.
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+
           if git ls-remote --exit-code --heads origin artifacts >/dev/null 2>&1; then
             git fetch --depth=1 origin artifacts
             git worktree add --detach .artifacts-worktree FETCH_HEAD
