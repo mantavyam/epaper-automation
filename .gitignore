@@ -223,3 +223,11 @@ __marimo__/
 failure-report.md
 issue-body.md
 hop-*.html
+
+# Transient manifest handed from scraper.py to notify.py -- never committed
+notify.json
+
+# Artifacts live on their own `artifacts` branch, never on main -- see
+# common.ARTIFACTS_BRANCH. The workflow checks that branch out here.
+artifacts/
+.artifacts-worktree/

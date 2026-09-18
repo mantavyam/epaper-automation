@@ -41,9 +41,37 @@ def configure_logging(level=logging.INFO):
     root.setLevel(level)
 
 HISTORY_FILE = "download_history.json"
-ARTIFACTS_DIR = "artifacts"
+# Subdirectory the date folders live under. The workflow blanks this, so on
+# the artifacts branch the dates sit at the branch root and URLs read
+# /<repo>/artifacts/2026-09-18/... rather than doubling the word.
+ARTIFACTS_DIR = os.getenv("ARTIFACTS_DIR", "artifacts")
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "")
 STALE_ARTIFACT_DAYS = 7
+
+# Artifacts live on their own branch, not on main.
+#
+# main's history was growing ~1.7 MB/day and would never shrink: the 7-day
+# prune keeps the working tree small but every deleted byte stays in git
+# history forever (measured: 20.6 MB of artifact blobs across 12 dates,
+# 85% of the whole repo, with an empty artifacts/ in the working tree).
+#
+# So the workflow checks this branch out as a worktree, points
+# ARTIFACTS_ROOT at it, and force-pushes it back as a *single* commit each
+# run. The branch is a rolling mirror of the live window, its history has
+# no value, and collapsing it every time bounds it permanently at ~7 days.
+# main's history stops growing entirely.
+#
+# It stays in the same repo, served from raw.githubusercontent.com, rather
+# than moving to GitHub Releases -- release assets send no
+# Access-Control-Allow-Origin, so the site's PDF.js viewer (which fetches
+# the bytes itself) would be CORS-blocked. raw.githubusercontent.com sends
+# `*` on any branch.
+ARTIFACTS_BRANCH = "artifacts"
+
+# Filesystem root the artifact tree is written under. The workflow sets
+# this to the artifacts-branch worktree; locally it defaults to the repo
+# itself, so a local run behaves exactly as before.
+ARTIFACTS_ROOT = os.getenv("ARTIFACTS_ROOT", ".")
 
 IST = ZoneInfo("Asia/Kolkata")
 
@@ -63,14 +91,36 @@ def now_ist():
 GITHUB_REPOSITORY = os.getenv("GITHUB_REPOSITORY", "mantavyam/epaper-automation")
 
 
-def raw_url(repo_relative_path):
-    """Build a raw.githubusercontent.com URL for a file committed to main.
+def raw_url(local_path):
+    """Build a raw.githubusercontent.com URL for an artifact.
+
+    Takes the path the file was written to locally and resolves it against
+    ARTIFACTS_ROOT, so callers don't have to know whether they're running
+    inside the artifacts-branch worktree or a plain local checkout.
 
     Used to link the Jekyll site to artifacts without duplicating them into
     the site source -- when the 7-day cleanup deletes the file, this link
     404s, which is what the site's expiry handling detects.
     """
-    return f"https://raw.githubusercontent.com/{GITHUB_REPOSITORY}/main/{repo_relative_path}"
+    rel = os.path.relpath(local_path, ARTIFACTS_ROOT)
+    return f"https://raw.githubusercontent.com/{GITHUB_REPOSITORY}/{ARTIFACTS_BRANCH}/{rel}"
+
+
+def artifact_branch_path(local_path):
+    """Where a locally-written artifact sits on the artifacts branch."""
+    return os.path.relpath(local_path, ARTIFACTS_ROOT)
+
+# Where the Jekyll site is published. Mirrors app/_config.yml's `url` +
+# `baseurl` + `permalink: /epaper/:day-:month-:year/`; Discord links point
+# here instead of carrying attachments.
+SITE_URL = "https://mantavyam.github.io"
+SITE_BASEURL = "/epaper-automation"
+
+
+def site_post_url(today):
+    """Public URL of the site post for a given date."""
+    return f"{SITE_URL}{SITE_BASEURL}/epaper/{today.strftime('%d-%m-%Y')}/"
+
 
 # Paper name -> short code used in artifact filenames, e.g. TH-EDITORIAL-14-08-26.pdf
 PAPER_CODES = {
@@ -119,22 +169,19 @@ def record_history(history, date_key, month_key, paper_name, entry):
     save_history(history)
 
 
-SKIP_STREAK_LIMIT = 3
-SKIP_STREAK_WINDOW = 21
+FULL_EDITION_STREAK_LIMIT = 3
+FULL_EDITION_STREAK_WINDOW = 21
 
 
-def consecutive_skips(history, paper_name, today, source,
-                      window=SKIP_STREAK_WINDOW):
-    """Count back-to-back 'skipped_not_published' days before today.
+def consecutive_full_editions(history, paper_name, today, source,
+                              window=FULL_EDITION_STREAK_WINDOW):
+    """Count back-to-back days that fell through to the full-edition tier.
 
-    A skip on its own is normal -- neither paper runs an editorial every
-    single day, and the pattern is irregular (Sunday 23-08-2026 published;
-    the Sundays either side of it didn't). What is *not* normal is a run of
-    them: the longest genuine streak on record is one day. So a streak is
-    the tell that our page locator broke rather than that the paper took a
-    day off -- exactly how the preppyq paywall hid for six straight green
-    runs, recording 'skipped_not_published' while downloading a Razorpay
-    payment page.
+    Falling through once is survivable -- the paper still ships, just as
+    the whole edition rather than the editorial page. A *run* of them is
+    the tell that both locators are dead rather than that one day's layout
+    was odd, and it is also when committed full editions start to weigh on
+    the repository. Three in a row is treated as an outage.
 
     Two deliberate choices in the walk:
 
@@ -142,9 +189,8 @@ def consecutive_skips(history, paper_name, today, source,
         of the streak. The workflow doesn't run every day (dispatch-only
         gaps are all over the history), and a gap says nothing either way.
       - An entry from a *different* source ends the walk. A streak is
-        evidence about one source's locator, so switching sources resets
-        it -- without this, the first indiags run would inherit the dead
-        preppyq source's six-day streak and cry wolf immediately.
+        evidence about one source's locators, so switching sources resets
+        it rather than inheriting a dead source's streak and crying wolf.
     """
     streak = 0
     for back in range(1, window + 1):
@@ -158,7 +204,7 @@ def consecutive_skips(history, paper_name, today, source,
             continue  # workflow didn't run that day -- no evidence either way
         if entry.get("source") != source:
             break  # different source: its streak isn't evidence about ours
-        if entry.get("status") != "skipped_not_published":
+        if entry.get("located_via") != "full":
             break
         streak += 1
     return streak
@@ -208,17 +254,23 @@ def report_problem(title, message, level="error"):
 
 
 def artifact_dir_for(date_str):
-    path = os.path.join(ARTIFACTS_DIR, date_str)
+    path = os.path.join(ARTIFACTS_ROOT, ARTIFACTS_DIR, date_str)
     os.makedirs(path, exist_ok=True)
     return path
 
 
 def cleanup_stale_artifacts(days=STALE_ARTIFACT_DAYS):
-    if not os.path.isdir(ARTIFACTS_DIR):
+    """Prune date folders older than the rolling window.
+
+    Runs against ARTIFACTS_ROOT, so in CI it prunes the artifacts-branch
+    worktree -- which is the only place with more than today's files in it.
+    """
+    base = os.path.join(ARTIFACTS_ROOT, ARTIFACTS_DIR)
+    if not os.path.isdir(base):
         return
     cutoff = now_ist().date() - timedelta(days=days)
-    for name in os.listdir(ARTIFACTS_DIR):
-        path = os.path.join(ARTIFACTS_DIR, name)
+    for name in os.listdir(base):
+        path = os.path.join(base, name)
         if not os.path.isdir(path):
             continue
         try:
@@ -264,43 +316,38 @@ def cleanup_stale_posts(days=STALE_ARTIFACT_DAYS):
             logger.info("Removed stale site post: %s", path)
 
 
-def post_discord(content, embed_title, embed_color, file_paths, date_str):
-    """Post a message with one or more file attachments to the Discord webhook.
+def post_discord(content, embed_title, embed_description, embed_url,
+                 embed_color=0x3498DB):
+    """Post a link to the site's page for the day. No attachments.
 
-    file_paths: list of (filename, path) tuples.
+    Files used to be uploaded straight to the webhook. They aren't any
+    more: the site already hosts every artifact behind a PDF.js viewer,
+    so a link carries strictly more than an attachment did (both papers
+    in one message, article crops inline, working previews) and keeps the
+    message small. Note the linked post is pruned on the same 7-day window
+    as the artifacts -- older Discord links will 404, which is accepted.
     """
     if not DISCORD_WEBHOOK_URL:
         logger.warning("Discord webhook URL not configured")
         return False
 
-    embed = {
-        "title": embed_title,
-        "color": embed_color,
-        "timestamp": now_ist().isoformat(),
-        "footer": {"text": "E-Newspaper Editorial Extractor"},
+    payload = {
+        "content": content,
+        "embeds": [{
+            "title": embed_title,
+            "description": embed_description,
+            "url": embed_url,
+            "color": embed_color,
+            "timestamp": now_ist().isoformat(),
+            "footer": {"text": "E-Newspaper Editorial Extractor"},
+        }],
     }
-    payload = {"content": content, "embeds": [embed]}
 
-    files = {}
-    opened = []
     try:
-        for idx, (filename, path) in enumerate(file_paths):
-            fh = open(path, "rb")
-            opened.append(fh)
-            files[f"file{idx}"] = (filename, fh)
-
-        response = requests.post(
-            DISCORD_WEBHOOK_URL,
-            data={"payload_json": json.dumps(payload)},
-            files=files,
-            timeout=30,
-        )
+        response = requests.post(DISCORD_WEBHOOK_URL, json=payload, timeout=30)
         response.raise_for_status()
-        logger.info("Posted to Discord: %s", embed_title)
+        logger.info("Posted to Discord: %s", embed_url)
         return True
     except Exception as e:
         logger.error("Error posting to Discord: %s", e)
         return False
-    finally:
-        for fh in opened:
-            fh.close()

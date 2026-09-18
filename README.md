@@ -14,13 +14,15 @@ flowchart TD
     cron["cron: 7:00 PM IST daily"] --> run["daily-newspaper.yml"]
     manual["workflow_dispatch\n(manual run)"] --> run
     run -->|"indiags.com\n4-hop link chain"| pdfs["The Hindu +\nIndian Express PDFs"]
-    pdfs --> locate["locate Editorial page\n(text search for Hindu,\nOCR for Indian Express)"]
+    pdfs --> locate["locate Editorial page\n(tier 1: text layer\ntier 2: masthead OCR)"]
     locate --> single["extract single page\nas PDF"]
     locate --> crop["crop 2 articles\n(Hindu only,\nvector rule geometry)"]
-    single --> discord["Discord webhook"]
-    crop --> discord
+    locate -->|"tier 3:\nneither found it"| full["publish the\nfull edition"]
     single --> site["Jekyll site"]
     crop --> site
+    full --> site
+    site --> pages["Pages deploy\n(workflow waits)"]
+    pages --> discord["Discord: link\nto the day's page"]
 ```
 
 ### Source: indiags.com
@@ -50,12 +52,15 @@ The site's UI wraps this in a quiz-unlock button, a 15-second countdown banner, 
 
 **The session is IPv4-only with connect retries** (`build_session()`). indiags sits behind a Hostinger CDN publishing both A and AAAA records, and intermittently refuses connections from CI runners for a few minutes at a time. GitHub Actions runners have no IPv6 egress, so every AAAA address is a guaranteed `ENETUNREACH` — and since `urllib3`'s connect loop raises only the *last* error it saw, those IPv6 failures mask the real IPv4 error and make a plain CDN blip look like a routing bug. Pinning `allowed_gai_family` to `AF_INET` keeps the reported error honest, and the retry/backoff on the adapter keeps a transient blip from costing the whole day's run.
 
-Editorial-page location differs per paper because their PDFs are structured differently:
+Editorial-page location is **tiered, and which tier runs is measured per document** rather than configured per paper (`editorial.locate_editorial_page()`):
 
-- **The Hindu** — clean text layer; the masthead always carries a standalone line reading exactly `Editorial`, matched on the page's top text lines.
-- **Indian Express** — the PDF page is a single flattened JPEG with a broken, non-Unicode-mapped text layer (glyph-indexed font, unusable for search). Located instead by OCR: the top 20% of each page is rendered and read with `pytesseract`, matching a short standalone line reading `The Editorial Page`. The length check matters — the front page also carries a teaser banner ("*The Editorial Page: SC has nurtured environmental law...*") pointing readers to the real page, which contains the same phrase but as a long sentence with a colon, not a bare masthead line. Matching only short lines tells them apart reliably.
+1. **text** — the PDF's text layer decodes, so the masthead line is read straight out of it. Exact and fast (~0.4s for an 18-page edition). The match is gated on *where the line sits on the page*, not on its ordinal among extracted lines: text comes out in content-stream order, not top-to-bottom, so a stray caption block emitted first shifts every following line down by one. That is exactly what silently broke the original locator, which used a fixed `lines[:8]` window with the masthead sitting at index 7.
+2. **ocr** — the text layer is missing or unusable, or tier 1 found nothing. The top 25% of each page is rendered at 200 DPI and read with `pytesseract`, stopping at the first hit (~20–40s). Neither number is a tuning knob: at 150 DPI tesseract missed The Hindu's masthead on a page 200 DPI read cleanly, and at a 15% strip the Indian Express masthead fell outside the crop entirely.
+3. **full** — neither tier found it. The whole edition is published instead of skipping the paper; the PDF is in hand either way, and a reader would rather have the full paper than nothing.
 
-If no page matches, the paper didn't run an editorial that day (Sunday, holiday) and the run skips that paper cleanly rather than guessing.
+`text_layer_usable()` is what picks the tier: the share of non-space extracted characters that decode to real text. The Hindu scores **1.00**; Indian Express scores **0.19** — it embeds every font as `Identity-H` with a `ToUnicode` CMap mapping every glyph to `U+FFFD`, so its text layer *exists* (~20k characters a page) but decodes to control bytes. The threshold sits in a very wide gap and needs no tuning. Measuring beats a hardcoded per-paper flag: it keeps picking the right tier if either paper changes its production pipeline.
+
+Masthead patterns are matched against a **normalised** line — lowercased, every run of non-alphanumerics collapsed to one space — and must match it *in full*. Both parts earn their place. Normalisation, because OCR output is dirty in ways exact matching can't survive (The Hindu's masthead came back as `. Editorial =`). Full-line matching, because the decoys differ from the masthead in *words*, not punctuation: on 2026-09-18 the Indian Express edition carried `the editorial page release 2017 18 consumption data put all doubt to rest` (a front-page teaser), `naging editor and director of re` (masthead bleed) and `editorials and opinions` (a section strap), all rejected, with the real `the editorial page` found on page 14. Note the teaser was on **page 5** — skipping the first two pages is a cheap extra guard, not a sufficient one.
 
 The Hindu's PDF carries vector rule geometry, so its two main articles are cropped from the page. `PyMuPDF`'s `get_drawings()` returns the exact rules the page was laid out with:
 
@@ -63,7 +68,7 @@ The Hindu's PDF carries vector rule geometry, so its two main articles are cropp
 - horizontal rules within the remaining content column bound each article, in order
 - The Hindu always runs exactly two main articles on this page, followed by Letters to the Editor, which is dropped unconditionally
 
-Each article is rendered to a high-resolution PNG from its exact rule-bounded region. Indian Express stays single-page-PDF-only: its PDF is a flattened raster page with no vector drawings, and no printed rule line is reliably detectable at the pixel level either (tested down to per-row dark-run analysis at 200 DPI — the section dividers visible on the printed page don't survive as a clean signal in the compressed raster). Rule-based article cropping just isn't viable there.
+Each article is rendered to a high-resolution PNG from its exact rule-bounded region. Indian Express stays page-PDF-only: `get_drawings()` returns nothing at all on its editorial page. The rules and photos a reader sees there live in a full-page background raster, with the text drawn as vector glyphs on top — so there is no rule geometry to crop against, and none is detectable at the pixel level either (tested down to per-row dark-run analysis at 200 DPI).
 
 ### Guardrails
 
@@ -75,7 +80,22 @@ Which locator actually fired is recorded in history as `resolved_via`, and anyth
 
 **The one-time `/go/` token is looked for in three places** (`_extract_go_url()`) — fragment as a query string, then the query string proper, then anything `/go/`-shaped in the response body. The site has already moved this once; parsing the fragment with `parse_qs` means further added keys are a non-event.
 
-**A run of skips is reported** (`common.consecutive_skips()`). A single `skipped_not_published` is normal — neither paper publishes an editorial every day, and the pattern is irregular (Sunday 23-08-2026 published; the Sundays either side didn't). A *streak* is not: the longest genuine one on record is a single day. Three in a row fails the run and reports instead of recording another quiet skip. Two details matter — days with no entry are stepped over (the workflow doesn't run every day, and a gap is not evidence), and an entry from a different `source` ends the walk, so switching sources doesn't inherit the previous one's streak. Checked against the real history: it trips on 02-09-2026, the third day of the preppyq outage, and stays silent on the genuine one-day gaps.
+**Nothing is ever silently skipped.** The old behaviour recorded `skipped_not_published` whenever the locator found nothing, which is indistinguishable from the paper genuinely not running an editorial — and that ambiguity is what hid the last breakage for six days. Now the tiers themselves carry the diagnosis, recorded in history as `located_via`:
+
+| `located_via` | meaning | alert |
+|---|---|---|
+| `text` | found in a usable text layer | — |
+| `ocr` | text layer unusable, OCR found it | — (normal for Indian Express) |
+| `ocr-fallback` | text layer *was* usable but didn't contain the masthead; OCR covered | **warning, day 1** |
+| `full` | neither tier found it; whole edition published | **warning, day 1** |
+
+`ocr-fallback` is the valuable one: that combination is only possible if the paper's text-layer layout moved, so the drift alarm fires on the first day it happens rather than after a streak of quiet skips — while the run still succeeds on the slow path.
+
+**A run of full-edition fallbacks fails the run** (`common.consecutive_full_editions()`). One is survivable; three consecutive days means both tiers are dead, and each such day commits a multi-MB PDF into git history permanently. Two details matter — days with no entry are stepped over (the workflow doesn't run every day, and a gap is not evidence), and an entry from a different `source` ends the walk, so switching sources doesn't inherit the previous one's streak.
+
+**The download is sanity-checked before it's treated as a paper** (`_validate_download()`): `Content-Type`, `%PDF` magic bytes, a 1 MB floor and an 8-page floor. The longest-hiding failure in this system was a *successful* download of the wrong thing — see below. The edition's printed dateline is also parsed and compared against today's date, warning (but still publishing) on a mismatch, which catches a source serving a cached or wrong-day edition.
+
+**A tier-3 PDF is kept, not deleted.** The full edition stays in `artifacts/`, so the exact file that defeated both locators is available for diagnosis. The previous code deleted the download on the skip path, which is precisely why the last breakage couldn't be reproduced after the fact.
 
 **Problems are reported, not delivered, by the scraper** (`common.report_problem()`). Nothing diagnostic goes to Discord — that webhook points at a public community server, so it stays single-purpose: posting editorials. Instead each problem is written to three places that need no secret at all — a GitHub Actions annotation (called out inline on the run page), `$GITHUB_STEP_SUMMARY` (so the run page explains itself), and `failure-report.md`.
 
@@ -91,15 +111,16 @@ The original primary source was `preppyq.in`, a static WordPress page listing di
 
 ## The site
 
-The scraper publishes into a single Jekyll post per date (`site_publish.py`), so the day's output — however many papers ran — lands on one page instead of one per paper, on a small static site (`app/`, a customized [jekyll-swiss](https://github.com/broccolini/swiss) theme) in addition to Discord.
+The scraper publishes into a single Jekyll post per date (`site_publish.py`), so the day's output — however many papers ran — lands on one page instead of one per paper, on a small static site (`app/`, a customized [jekyll-swiss](https://github.com/broccolini/swiss) theme). The site *is* the delivery mechanism — Discord gets a link to it, not attachments.
 
 ```mermaid
 flowchart LR
     extract["extraction succeeds\n(scraper.py)"] --> post["site_publish.publish_post()\nmerges this paper's section into\napp/_posts/YYYY-MM-DD-editorials.md"]
     post --> commit["workflow commits\napp/_posts + artifacts/"]
     commit --> dispatch["gh workflow run pages.yml\n(explicit dispatch --\na bot-token push doesn't\ntrigger pages.yml's own\non:push automatically)"]
-    dispatch --> pagesbuild["pages.yml builds\n& deploys app/"]
+    dispatch --> pagesbuild["pages.yml builds\n& deploys app/\n(daily workflow waits\nfor this to finish)"]
     pagesbuild --> site["GitHub Pages site\n/epaper/DD-MM-YYYY/, one page\nper date, all papers"]
+    site --> notify["notify.py posts the\nlink to Discord"]
 
     site -.->|"img onerror /\nfetch HEAD check"| rawcheck{"raw.githubusercontent.com\nfile still there?"}
     rawcheck -->|yes| show["shows PDF viewer / image"]
@@ -112,9 +133,29 @@ flowchart LR
 
 One hand-patch on top of the vendored files: PDF.js's `viewer.mjs` hardcodes a same-origin check (`validateFileURL`) that only exempts Mozilla's own `mozilla.github.io` demo from loading a different-origin file via `?file=` — any other self-hosted deployment gets silently blocked (an empty viewer, no console-visible network failure, since it throws before ever fetching). Since every URL we pass is one we constructed ourselves from our own repo, never arbitrary input, our deployment origin (`https://mantavyam.github.io`, plus `http://localhost:4000` for local preview) is added to that allowlist directly in `app/assets/pdfjs/web/viewer.mjs` — the same trust model Mozilla applies to their own domain. **Re-apply this patch if `app/assets/pdfjs/` is ever re-vendored from a newer PDF.js release** — search `viewer.mjs` for `HOSTED_VIEWER_ORIGINS`.
 
-Posts don't duplicate the PDF/PNG files into the site — they link straight to `raw.githubusercontent.com/.../artifacts/...` on `main`. That keeps `app/`'s per-day footprint tiny, at the cost of those links depending on the artifact still being in the repo. Since both `artifacts/` and `app/_posts/` are pruned on the same 7-day rolling window (`common.cleanup_stale_posts()`, alongside `cleanup_stale_artifacts()`), a post essentially never outlives its own artifact in steady state — the client-side expiry handling in `app/_includes/expiry-check.html` exists as a safety net for the brief window within a single cleanup cycle, not as the normal experience. When it does trigger: images swap to a placeholder via `onerror` (immediate, no request needed), and each download-button link runs a `fetch(..., {method: "HEAD"})` on page load and replaces itself with "This PDF has expired" if the request fails.
+Posts don't duplicate the PDF/PNG files into the site — they link straight to `raw.githubusercontent.com/.../artifacts/...`, served off the dedicated `artifacts` branch (see below). That keeps `app/`'s per-day footprint tiny, at the cost of those links depending on the artifact still being in the repo. Since both `artifacts/` and `app/_posts/` are pruned on the same 7-day rolling window (`common.cleanup_stale_posts()`, alongside `cleanup_stale_artifacts()`), a post essentially never outlives its own artifact in steady state — the client-side expiry handling in `app/_includes/expiry-check.html` exists as a safety net for the brief window within a single cleanup cycle, not as the normal experience. When it does trigger: images swap to a placeholder via `onerror` (immediate, no request needed), and each download-button link runs a `fetch(..., {method: "HEAD"})` on page load and replaces itself with "This PDF has expired" if the request fails.
 
-Site is deployed by `.github/workflows/pages.yml` (Jekyll build via `ruby/setup-ruby` + `actions/deploy-pages`, `jekyll-sass-converter` pinned to the pure-Ruby v2 line rather than the default `sass-embedded` for one less native-binary dependency in CI) on every push to `app/**`, manually via `workflow_dispatch`, or explicitly dispatched by the daily workflow's last step (needed because its own commit is pushed with `GITHUB_TOKEN`, which GitHub deliberately excludes from triggering other workflows' `on: push`). Browsing by date needs no custom code — `site.posts` is Jekyll's native reverse-chronological list; `/epaper/` (`app/epaper.html`) filters it to the `epaper` category. All post/history timestamps go through `common.now_ist()` and `_config.yml`'s `timezone: Asia/Kolkata`, not the build host's own clock (GitHub Actions runners default to UTC) — Jekyll normalizes every post date to the *build machine's* local timezone before deriving permalink components, so without pinning this explicitly, a post published in the early IST morning can silently land on the wrong calendar day.
+Site is deployed by `.github/workflows/pages.yml` (Jekyll build via `ruby/setup-ruby` + `actions/deploy-pages`, `jekyll-sass-converter` pinned to the pure-Ruby v2 line rather than the default `sass-embedded` for one less native-binary dependency in CI) on every push to `app/**`, manually via `workflow_dispatch`, or explicitly dispatched by the daily workflow (needed because its own commit is pushed with `GITHUB_TOKEN`, which GitHub deliberately excludes from triggering other workflows' `on: push`). Browsing by date needs no custom code — `site.posts` is Jekyll's native reverse-chronological list; `/epaper/` (`app/epaper.html`) filters it to the `epaper` category. All post/history timestamps go through `common.now_ist()` and `_config.yml`'s `timezone: Asia/Kolkata`, not the build host's own clock (GitHub Actions runners default to UTC) — Jekyll normalizes every post date to the *build machine's* local timezone before deriving permalink components, so without pinning this explicitly, a post published in the early IST morning can silently land on the wrong calendar day.
+
+### Discord gets a link, not files
+
+`notify.py` posts one message per day — the date, which papers ran, and a link to `/epaper/DD-MM-YYYY/`. No attachments. The site already hosts every artifact behind a PDF.js viewer, so a link carries strictly more than an upload did (both papers in one message, article crops inline, working previews) while keeping the message small.
+
+This is why it is a *separate script from a later workflow step*. The link points at a page that doesn't exist until the post has been committed, built and deployed; posting it from the extraction step would hand readers a URL that 404s for a minute or two. So `scraper.py` writes `notify.json`, the workflow commits, dispatches `pages.yml` and **waits for that deploy to conclude**, and only then runs `notify.py`. If the deploy fails or never starts, the step is skipped rather than posting a dead link.
+
+Re-runs can't double-post, and it needs no extra state to manage that: `scraper.py` writes the manifest only when it actually published something, and a re-run for a date already in the history short-circuits on `already_processed()` before publishing. A re-run therefore leaves no manifest and `notify.py` no-ops.
+
+Linked posts are pruned on the same 7-day window as the artifacts, so Discord links older than a week will 404. That's accepted — this is a rolling week of history, not an archive.
+
+### Artifacts live on their own branch
+
+`main`'s history was growing **~1.7 MB/day and could never shrink**. The 7-day prune keeps the working tree small, but every byte it deletes stays in git history forever — measured at 20.6 MB of artifact blobs across 12 dates, **85% of the whole repo**, with an empty `artifacts/` in the working tree. Left alone that's ~630 MB/year, unbounded.
+
+So artifacts are committed to a separate `artifacts` branch instead, and `artifacts/` is `.gitignore`d on `main`. The workflow checks that branch out as a worktree (`.artifacts-worktree`) before extraction and points `ARTIFACTS_ROOT` at it, so `scraper.py` writes the rolling window straight into it — which also means `cleanup_stale_artifacts()` can see the older days it needs to prune, since they're no longer on `main` at all. `ARTIFACTS_DIR` is blanked there so the date folders sit at the branch root, keeping URLs as `/<repo>/artifacts/YYYY-MM-DD/...` rather than doubling the word.
+
+The branch is **force-pushed as a single commit every run** (`commit-tree` with no parent). It's a rolling mirror of the live window; its history carries no information and would otherwise grow exactly as `main`'s did. Collapsing it each time bounds it permanently at one window's worth of files, and `main`'s history stops growing at all. Old blobs become unreachable — GitHub prunes those on its own schedule, so the *reported* repo size won't drop promptly; this stops the accumulation rather than reclaiming what's already there.
+
+**Why not GitHub Releases** (the obvious place for build outputs): release assets send no `Access-Control-Allow-Origin` header, while `raw.githubusercontent.com` sends `*` on any branch. The site's PDF.js viewer fetches PDF bytes itself, so release-hosted PDFs would be CORS-blocked and the inline preview would silently break. Checked both, directly.
 
 ## Repo layout
 
@@ -124,12 +165,14 @@ epaper-automation/
 ├── editorial.py                            # page location + extraction
 ├── common.py                               # history, Discord posting, cleanup
 ├── site_publish.py                         # writes app/_posts/ entries
+├── notify.py                               # posts the day's site link to Discord
 ├── download_history.json                   # per-paper daily dedup record
-├── artifacts/YYYY-MM-DD/                   # today's extracted PDFs/PNGs (auto-pruned, 7 days)
+├── (artifacts branch)/YYYY-MM-DD/          # extracted PDFs/PNGs -- NOT on main (auto-pruned, 7 days)
 │   ├── TH-EDITORIAL-DD-MM-YY.pdf           # single-page editorial PDF
 │   ├── TH-ART1-DD-MM-YY.png                # article crop 1 (Hindu only)
 │   ├── TH-ART2-DD-MM-YY.png                # article crop 2 (Hindu only)
-│   └── IE-EDITORIAL-DD-MM-YY.pdf
+│   ├── IE-EDITORIAL-DD-MM-YY.pdf
+│   └── TH-FULL-DD-MM-YY.pdf                # whole edition, kept only on a tier-3 fallback
 ├── app/                                     # Jekyll site (jekyll-swiss theme)
 │   ├── _posts/YYYY-MM-DD-editorials.md     # one per date, all papers (auto-pruned, 7 days)
 │   ├── epaper.html                          # /epaper/ -- browsable archive
@@ -156,7 +199,7 @@ pip install -r requirements.txt
 python scraper.py
 ```
 
-`pytesseract` needs the `tesseract-ocr` binary on PATH (`brew install tesseract` / `apt-get install tesseract-ocr`) — only exercised by Indian Express detection.
+`pytesseract` needs the `tesseract-ocr` binary on PATH (`brew install tesseract` / `apt-get install tesseract-ocr`). Indian Express always needs it; The Hindu only reaches it if its text layer stops working.
 
 ## Running manually
 
@@ -171,9 +214,9 @@ gh workflow run pages.yml
 
 ## History and artifact lifecycle
 
-`download_history.json` is keyed `MM-YYYY -> YYYY-MM-DD -> paper name`, recording whether that paper was posted, skipped (no editorial published that day), or failed, plus the source it came from and which locator resolved the chain (`resolved_via`). The scraper checks this before doing any work, so re-running the workflow the same day is a no-op for papers already posted.
+`download_history.json` is keyed `MM-YYYY -> YYYY-MM-DD -> paper name`, recording whether that paper was `published` or `published_full_edition`, the source it came from, which locator resolved the chain (`resolved_via`) and which tier found the editorial page (`located_via` — see the guardrails table above). The scraper checks this before doing any work, so re-running the workflow the same day is a no-op for papers already posted.
 
-Extracted files land in `artifacts/YYYY-MM-DD/`, named `{PAPER_CODE}-{DOC_TYPE}[N]-DD-MM-YY.{ext}` (`TH` for The Hindu, `IE` for Indian Express; `EDITORIAL` for the single-page PDF, `ART1`/`ART2` for The Hindu's article crops) so the paper, content, and date are readable from the filename alone. They're committed by the workflow. Every run also prunes any date folder older than **7 days**, and the corresponding `app/_posts/` entries on the same window, so the repo stays a rolling week of history rather than accumulating indefinitely.
+Extracted files land in `YYYY-MM-DD/` on the `artifacts` branch (and in `artifacts/YYYY-MM-DD/` for a plain local run), named `{PAPER_CODE}-{DOC_TYPE}[N]-DD-MM-YY.{ext}` (`TH` for The Hindu, `IE` for Indian Express; `EDITORIAL` for the single-page PDF, `ART1`/`ART2` for The Hindu's article crops, `FULL` for a whole edition kept after a tier-3 fallback) so the paper, content, and date are readable from the filename alone. They're committed by the workflow to the `artifacts` branch, never to `main`. Every run also prunes any date folder older than **7 days**, and the corresponding `app/_posts/` entries on the same window, so the site stays a rolling week of history rather than accumulating indefinitely.
 
 ## Dependencies
 

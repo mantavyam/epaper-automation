@@ -38,10 +38,38 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Check out the artifacts branch
+        # Artifacts are not committed to main. main's history was growing
+        # ~1.7 MB/day and can never shrink -- the 7-day prune keeps the
+        # working tree small while every deleted byte stays in history
+        # forever. They live on their own branch instead, checked out here
+        # as a worktree so the extraction step writes the rolling window
+        # straight into it (and so cleanup_stale_artifacts can see the
+        # older days it needs to prune).
+        run: |
+          set -euo pipefail
+
+          if git ls-remote --exit-code --heads origin artifacts >/dev/null 2>&1; then
+            git fetch --depth=1 origin artifacts
+            git worktree add --detach .artifacts-worktree FETCH_HEAD
+          else
+            # First run: start the branch from an empty tree. Done with
+            # plumbing rather than `worktree add --orphan`, which needs a
+            # git version we shouldn't have to assume on the runner.
+            empty_tree=$(git hash-object -w -t tree /dev/null)
+            empty_commit=$(git commit-tree "$empty_tree" -m "artifacts: start")
+            git worktree add --detach .artifacts-worktree "$empty_commit"
+          fi
+
       - name: Run editorial extraction
         id: extract
         env:
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          # Write artifacts into the artifacts-branch worktree. ARTIFACTS_DIR
+          # is blanked so the date folders sit at the branch root, keeping
+          # raw URLs as /<repo>/artifacts/YYYY-MM-DD/... instead of doubling
+          # the word.
+          ARTIFACTS_ROOT: .artifacts-worktree
+          ARTIFACTS_DIR: ""
         run: |
           python scraper.py
 
@@ -61,14 +89,91 @@ jobs:
           fi
         continue-on-error: true
 
-      - name: Trigger site rebuild
+      - name: Push the artifacts branch
+        # Force-pushed as a SINGLE commit every run. The branch is a rolling
+        # mirror of the live 7-day window -- its history carries no
+        # information and would otherwise grow exactly as main's did.
+        # Collapsing it each time bounds the branch permanently at one
+        # window's worth of files. Old blobs become unreachable; GitHub
+        # prunes them on its own schedule.
+        if: always()
+        run: |
+          set -euo pipefail
+
+          if [ ! -d .artifacts-worktree ]; then
+            echo "No artifacts worktree (extraction never got that far)"
+            exit 0
+          fi
+
+          # commit-tree needs an identity of its own; don't rely on the
+          # previous step having set one.
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+
+          git -C .artifacts-worktree add -A
+          if git -C .artifacts-worktree diff --cached --quiet; then
+            echo "No artifact changes to push"
+            exit 0
+          fi
+
+          tree=$(git -C .artifacts-worktree write-tree)
+          commit=$(git -C .artifacts-worktree commit-tree "$tree" \
+            -m "Artifacts - $(date +'%Y-%m-%d')")
+          git push --force origin "$commit":refs/heads/artifacts
+
+      - name: Rebuild site and wait for the deploy
         # A GITHUB_TOKEN push (the commit above) does not trigger other
         # workflows' `on: push` -- dispatch pages.yml explicitly instead.
+        #
+        # We wait for it rather than firing and forgetting, because the
+        # Discord message is now a link to the published page instead of
+        # an attachment. Posting before Pages has deployed would hand
+        # readers a URL that 404s for a minute or two.
+        id: deploy
         if: always()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -uo pipefail
+
+          # `gh workflow run` is asynchronous and returns no run id, so
+          # note the newest run before dispatching and poll until a newer
+          # one appears. Matching on "newest id changed" rather than
+          # guessing avoids watching the *previous* run to completion and
+          # declaring success before ours has even started.
+          before=$(gh run list --workflow=pages.yml --limit 1 \
+            --json databaseId --jq '.[0].databaseId // 0')
           gh workflow run pages.yml
+
+          run_id="$before"
+          for _ in $(seq 1 30); do
+            sleep 5
+            run_id=$(gh run list --workflow=pages.yml --limit 1 \
+              --json databaseId --jq '.[0].databaseId // 0')
+            if [ "$run_id" != "$before" ]; then break; fi
+          done
+
+          if [ "$run_id" = "$before" ]; then
+            echo "::warning::pages.yml run never appeared -- skipping the Discord link"
+            echo "deployed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if gh run watch "$run_id" --exit-status; then
+            echo "deployed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::pages.yml deploy failed -- skipping the Discord link"
+            echo "deployed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Post the Discord link
+        # Only once the page it points at is actually live. notify.py is a
+        # no-op when nothing was published this run (no notify.json), which
+        # is what keeps manual re-runs from double-posting.
+        if: always() && steps.deploy.outputs.deployed == 'true'
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: python notify.py
 
       - name: Report problems as a GitHub Issue
         # Runs on success too: the early-warning report (chain surviving on

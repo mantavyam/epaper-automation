@@ -4,13 +4,21 @@ E-Newspaper Editorial Extractor (indiags.com)
 
 Walks indiags' 4-hop link chain per paper -- homepage -> book page ->
 newsletter page -> quiz-unlock redirect -- to reach a one-time-use direct
-PDF link, then extracts just the Editorial page and posts it to Discord.
+PDF link, then extracts just the Editorial page and publishes it.
 
 The Hindu's PDF carries vector rule geometry, so its two main articles are
-cropped out as images. Indian Express is single-page-PDF-only: its PDF is a
-flattened raster page with no vector drawings and no reliably-detectable
-printed rule lines at any pixel threshold tested, so rule-based article
-cropping isn't viable there.
+cropped out as images. Indian Express is page-PDF-only: its editorial page
+draws no vector rules at all (the rules a reader sees live in a full-page
+background raster), so rule-based article cropping isn't viable there.
+
+Locating the editorial page is tiered and self-detecting -- see
+editorial.locate_editorial_page. If both tiers miss, the whole edition is
+published rather than skipping the paper for the day: the PDF is in hand
+either way, and a reader would rather have the full paper than nothing.
+
+Nothing is posted to Discord from here. This script writes the site post
+and a notify.json manifest; notify.py posts the link once GitHub Pages has
+actually deployed it.
 
 Every step is a plain HTTP GET + HTML parse -- no browser automation. The
 "quiz"/15s-timer/popups on this site are pure client-side UI theater: the
@@ -21,9 +29,11 @@ regardless of whether a human ever interacts with the page.
 import os
 import sys
 import re
+import json
 import socket
 import logging
 import urllib.parse
+from datetime import timedelta
 
 
 import requests
@@ -40,13 +50,37 @@ import site_publish
 BASE_URL = "https://www.indiags.com/epaper-pdf-download"
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
 
-# paper title on site -> (display name, editorial locate mode)
+# paper title on site -> (display name, masthead pattern)
+#
+# The pattern is matched against a *normalised* line (lowercased, every run
+# of non-alphanumerics collapsed to one space) and must match the line in
+# full. That full-line requirement is what rejects the front-page teasers
+# both papers run -- "the editorial page release 2017 18 consumption data
+# ..." and "editorials and opinions" both contain the phrase but are not
+# the masthead.
+#
+# There is deliberately no "which locator to use" column any more: the
+# tier is measured per document from the PDF itself.
 PAPERS = {
-    "The Hindu": ("The Hindu", "text"),
-    "Indian Express": ("Indian Express", "ocr"),
+    "The Hindu": ("The Hindu", re.compile(r"editorial")),
+    "Indian Express": ("Indian Express", re.compile(r"(the )?editorial page")),
 }
 PAPER_CODES = {"The Hindu": "TH", "Indian Express": "IE"}
 SOURCE = "indiags"
+
+# Manifest handed to notify.py. Written only when something was actually
+# published this run, which is what makes re-runs idempotent: a re-run
+# short-circuits on already_processed, writes no manifest, and notify.py
+# then has nothing to post.
+NOTIFY_FILE = "notify.json"
+
+# Sanity gates on the downloaded file, before it is treated as a paper.
+# These exist because the failure that hid longest in this system was a
+# *successful* download of the wrong thing -- the previous source served a
+# Razorpay payment page for six green runs while the history recorded
+# "skipped_not_published" each day.
+MIN_PDF_BYTES = 1_000_000
+MIN_PAGES = 8
 
 common.configure_logging()
 logger = logging.getLogger(__name__)
@@ -66,8 +100,9 @@ def build_session():
         the real IPv4 error in urllib3's "raise the last error" loop.
         Note this patch is process-wide, not per-session -- urllib3 reads
         allowed_gai_family as a module global on every connect, so it also
-        applies to the Discord upload. That's intended (nothing here wants
-        IPv6) but it is a side effect beyond this session object.
+        applies to every other outbound request in the process. That's
+        intended (nothing here wants IPv6) but it is a side effect
+        beyond this session object.
       - Retry connects with backoff, so a brief CDN blip costs seconds
         instead of the whole day's run.
     """
@@ -268,13 +303,52 @@ def _owning_paper(link):
     return None
 
 
-def process_paper(session, site_title, display_name, mode, book_id, history, today):
+def _validate_download(content, content_type, display_name):
+    """Reject anything that isn't plausibly a full newspaper PDF."""
+    if "pdf" not in content_type:
+        raise RuntimeError(
+            f"{display_name}: token url returned {content_type or 'no content-type'}, not a PDF"
+        )
+    if not content.startswith(b"%PDF"):
+        raise RuntimeError(f"{display_name}: response body is not a PDF (bad magic bytes)")
+    if len(content) < MIN_PDF_BYTES:
+        raise RuntimeError(
+            f"{display_name}: PDF is only {len(content) / 1e6:.2f} MB, "
+            f"below the {MIN_PDF_BYTES / 1e6:.2f} MB floor for a full edition"
+        )
+
+
+def _check_freshness(doc, page_idx, display_name, today):
+    """Warn if the edition's printed date isn't today's (or yesterday's).
+
+    Best-effort and non-fatal. An unreadable dateline is not evidence that
+    the edition is stale, and refusing to publish on that basis would turn
+    a cosmetic change into an outage. A *readable* dateline that disagrees,
+    though, means we fetched the wrong day's paper -- worth saying loudly
+    while still shipping what we have.
+    """
+    printed = editorial.edition_date(doc, page_idx)
+    if printed is None:
+        logger.warning("%s: could not read an edition date to verify freshness", display_name)
+        return
+    if printed not in (today.date(), today.date() - timedelta(days=1)):
+        common.report_problem(
+            f"{display_name}: edition date looks stale",
+            f"The PDF is dated {printed:%d %B %Y} but today is "
+            f"{today:%d %B %Y}. The source may be serving a cached or "
+            f"wrong-day edition. Published anyway.",
+            level="warning",
+        )
+
+
+def process_paper(session, site_title, display_name, header_re, book_id, history, today):
+    """Fetch, locate, publish one paper. Returns (ok, located_via|None)."""
     date_key = today.strftime("%Y-%m-%d")
     month_key = today.strftime("%m-%Y")
 
     if common.already_processed(history, date_key, month_key, display_name):
         logger.info("%s already processed today", display_name)
-        return True
+        return True, None
 
     token_url, how = resolve_token_url(session, book_id)
     if "selector:" in how or "label:" in how:
@@ -292,98 +366,138 @@ def process_paper(session, site_title, display_name, mode, book_id, history, tod
     logger.info("Downloading %s via %s", display_name, token_url)
     r = session.get(token_url, timeout=60)
     r.raise_for_status()
-    if "pdf" not in r.headers.get("Content-Type", ""):
-        raise RuntimeError(f"Token url did not return a PDF for {display_name}")
+    _validate_download(r.content, r.headers.get("Content-Type", ""), display_name)
 
     artifact_dir = common.artifact_dir_for(date_key)
-    raw_pdf_path = os.path.join(
+    full_pdf_path = os.path.join(
         artifact_dir, common.dated_filename(display_name, "FULL", today, "pdf")
     )
-    with open(raw_pdf_path, "wb") as f:
+    with open(full_pdf_path, "wb") as f:
         f.write(r.content)
 
-    doc = pymupdf.open(raw_pdf_path)
-    if mode == "text":
-        page_idx = editorial.locate_editorial_page_text(doc)
-    else:
-        page_idx = editorial.locate_editorial_page_ocr(doc)
+    doc = pymupdf.open(full_pdf_path)
+    try:
+        if len(doc) < MIN_PAGES:
+            raise RuntimeError(
+                f"{display_name}: PDF has only {len(doc)} pages, "
+                f"below the {MIN_PAGES}-page floor for a full edition"
+            )
 
-    if page_idx is None:
-        logger.info("%s: no editorial page found today, skipping", display_name)
-        os.remove(raw_pdf_path)
-        common.record_history(
-            history, date_key, month_key, display_name,
-            {
-                "status": "skipped_not_published",
-                "source": SOURCE,
-                "timestamp": common.now_ist().isoformat(),
-            },
+        page_idx, located_via = editorial.locate_editorial_page(doc, header_re)
+        _check_freshness(doc, page_idx if page_idx is not None else 0, display_name, today)
+
+        if located_via == "ocr-fallback":
+            # Succeeded, but only because OCR covered for a text layer that
+            # should have worked. That is the drift alarm: it fires on the
+            # first day the layout moves, rather than after a streak.
+            common.report_problem(
+                f"{display_name}: editorial page found by OCR, not the text layer",
+                f"The PDF's text layer decodes fine, but the masthead wasn't "
+                f"where the text locator looks -- OCR found it on page "
+                f"{page_idx + 1}. The page layout has moved. The run succeeded "
+                f"on the slow path; fix the text locator in editorial.py "
+                f"before OCR drifts too.",
+                level="warning",
+            )
+
+        if located_via == "full":
+            ok = _publish_full_edition(
+                display_name, full_pdf_path,
+                common.artifact_branch_path(artifact_dir), history,
+                date_key, month_key, today,
+            )
+            return ok, "full"
+
+        page_pdf_path = os.path.join(
+            artifact_dir, common.dated_filename(display_name, "EDITORIAL", today, "pdf")
         )
+        editorial.extract_single_page_pdf(doc, page_idx, page_pdf_path)
+
+        article_paths = []
+        if PAPER_CODES[display_name] == "TH":
+            for i, png_bytes in enumerate(editorial.extract_hindu_articles(doc, page_idx), start=1):
+                p = os.path.join(
+                    artifact_dir, common.dated_filename(display_name, "ART", today, "png", part=i)
+                )
+                with open(p, "wb") as f:
+                    f.write(png_bytes)
+                article_paths.append(p)
+    finally:
         doc.close()
 
-        # A skip is normal; a run of them means the locator broke, not that
-        # the paper took the week off. See common.consecutive_skips().
-        streak = common.consecutive_skips(history, display_name, today, SOURCE) + 1
-        if streak >= common.SKIP_STREAK_LIMIT:
-            msg = (
-                f"{display_name} has recorded {streak} consecutive days with no "
-                f"editorial page found. The longest genuine gap on record is one "
-                f"day, so this is far more likely a broken page locator than a "
-                f"real run of unpublished editorials. Check whether the masthead "
-                f"wording changed."
-            )
-            logger.error(msg)
-            common.report_problem(f"{display_name}: {streak}-day skip streak", msg)
-            return False
-        return True
-
-    single_pdf_path = os.path.join(
-        artifact_dir, common.dated_filename(display_name, "EDITORIAL", today, "pdf")
-    )
-    editorial.extract_single_page_pdf(doc, page_idx, single_pdf_path)
-
-    article_paths = []
-    if PAPER_CODES[display_name] == "TH":
-        for i, png_bytes in enumerate(editorial.extract_hindu_articles(doc, page_idx), start=1):
-            p = os.path.join(
-                artifact_dir, common.dated_filename(display_name, "ART", today, "png", part=i)
-            )
-            with open(p, "wb") as f:
-                f.write(png_bytes)
-            article_paths.append(p)
-
-    doc.close()
-    os.remove(raw_pdf_path)
-
-    date_str = today.strftime("%d %B %Y")
-    files = [(os.path.basename(p), p) for p in article_paths]
-    files.append((os.path.basename(single_pdf_path), single_pdf_path))
-    posted = common.post_discord(
-        content=f"**{display_name} Editorial** -- {date_str}",
-        embed_title=f"{display_name} Editorial - {date_str}",
-        embed_color=0x3498DB,
-        file_paths=files,
-        date_str=date_str,
-    )
+    os.remove(full_pdf_path)
 
     site_publish.publish_post(
         display_name, PAPER_CODES[display_name], today,
-        editorial_pdf_path=single_pdf_path,
-        article_image_paths=article_paths or None,
+        page_pdf_path, article_image_paths=article_paths or None,
     )
 
     common.record_history(
         history, date_key, month_key, display_name,
         {
-            "status": "posted" if posted else "post_failed",
+            "status": "published",
             "source": SOURCE,
             "resolved_via": how,
+            "located_via": located_via,
             "editorial_page_index": page_idx,
+            "artifact_dir": common.artifact_branch_path(artifact_dir),
+            "timestamp": common.now_ist().isoformat(),
+        },
+    )
+    return True, located_via
+
+
+def _publish_full_edition(display_name, full_pdf_path, artifact_dir, history,
+                          date_key, month_key, today):
+    """Neither locator found the editorial page -- ship the whole paper.
+
+    The full edition is kept rather than deleted, so the day still produces
+    something readable *and* the exact PDF that defeated both locators is
+    preserved for diagnosis. Previously this path deleted the download and
+    recorded a skip, which is why the last breakage could not be
+    reproduced after the fact.
+
+    A run of these is a different matter: it means both tiers are dead, and
+    full editions are several MB each committed into git history forever.
+    So three consecutive days is treated as an outage and fails the run.
+    """
+    logger.warning("%s: editorial page not found -- publishing the full edition", display_name)
+
+    site_publish.publish_post(
+        display_name, PAPER_CODES[display_name], today,
+        full_pdf_path, is_full_edition=True,
+    )
+    common.record_history(
+        history, date_key, month_key, display_name,
+        {
+            "status": "published_full_edition",
+            "source": SOURCE,
+            "located_via": "full",
             "artifact_dir": artifact_dir,
             "timestamp": common.now_ist().isoformat(),
         },
     )
-    return posted
+
+    streak = common.consecutive_full_editions(history, display_name, today, SOURCE) + 1
+    if streak >= common.FULL_EDITION_STREAK_LIMIT:
+        common.report_problem(
+            f"{display_name}: {streak}-day full-edition streak",
+            f"{display_name} has fallen back to publishing the full edition for "
+            f"{streak} consecutive days, meaning neither the text-layer locator "
+            f"nor OCR can find the editorial masthead. Both are broken, and each "
+            f"day adds a multi-MB PDF to git history permanently. Check whether "
+            f"the masthead wording or layout changed.",
+        )
+        return False
+
+    common.report_problem(
+        f"{display_name}: editorial page not found, published full edition",
+        f"Neither the text-layer locator nor OCR found the masthead in today's "
+        f"PDF, so the complete edition was published instead. Today's PDF is "
+        f"kept at `{full_pdf_path}` for inspection.",
+        level="warning",
+    )
+    return True
 
 
 def main():
@@ -401,7 +515,8 @@ def main():
 
     overall_ok = True
     failures = []
-    for site_title, (display_name, mode) in PAPERS.items():
+    published = []
+    for site_title, (display_name, header_re) in PAPERS.items():
         book_id = book_ids.get(site_title)
         if not book_id:
             logger.error("%s not found on indiags homepage today", site_title)
@@ -409,14 +524,21 @@ def main():
             overall_ok = False
             continue
         try:
-            ok = process_paper(session, site_title, display_name, mode, book_id, history, today)
+            ok, located_via = process_paper(
+                session, site_title, display_name, header_re, book_id, history, today
+            )
             overall_ok = overall_ok and ok
+            if located_via:
+                published.append({"name": display_name, "located_via": located_via})
         except Exception as e:
             logger.error("Error processing %s: %s", display_name, e)
             failures.append(f"{display_name}: {e}")
             overall_ok = False
 
-    # Streak trips alert on their own (with a more specific message), so
+    if published:
+        _write_notify_manifest(published, today)
+
+    # Streak and drift alerts raise their own, more specific reports, so
     # only raise the generic one for exceptions caught here.
     if failures:
         common.report_problem(
@@ -428,6 +550,19 @@ def main():
     logger.info("=== Editorial Extraction %s ===", "Completed" if overall_ok else "Completed with errors")
     if not overall_ok:
         sys.exit(1)
+
+
+def _write_notify_manifest(published, today):
+    """Hand notify.py what to say, once Pages has deployed the post."""
+    manifest = {
+        "date": today.strftime("%Y-%m-%d"),
+        "date_display": today.strftime("%d %B %Y"),
+        "url": common.site_post_url(today),
+        "papers": published,
+    }
+    with open(NOTIFY_FILE, "w") as f:
+        json.dump(manifest, f, indent=2)
+    logger.info("Wrote %s for %d paper(s)", NOTIFY_FILE, len(published))
 
 
 if __name__ == "__main__":

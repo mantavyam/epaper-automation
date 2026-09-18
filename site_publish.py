@@ -64,20 +64,36 @@ def _front_matter(today):
     ])
 
 
-def _build_section(paper_name, paper_code, editorial_pdf_path,
-                    article_image_paths=None):
-    editorial_url = common.raw_url(editorial_pdf_path)
+def _build_section(paper_name, paper_code, pdf_path,
+                    article_image_paths=None, is_full_edition=False):
+    """One paper's section. `pdf_path` is the editorial page, or -- when
+    is_full_edition is set -- the whole edition, shipped because neither
+    locator could find the editorial page. The whole edition is strictly
+    more than nothing, so the reader still gets the day's paper; the
+    banner says why it looks different."""
+    pdf_url = common.raw_url(pdf_path)
     lines = [f"# {paper_name}"]
 
     lines.append("")
-    lines.append("## Editorial")
-    lines.append("")
+    if is_full_edition:
+        lines.append("## Full edition")
+        lines.append("")
+        lines.append(
+            "> The editorial page could not be located in today's PDF, so the "
+            "complete edition is published instead."
+        )
+        lines.append("")
+        label, row = "Download full edition", "Complete edition"
+    else:
+        lines.append("## Editorial")
+        lines.append("")
+        label, row = "Download PDF", "Full editorial page"
     lines.append("| Page | Download |")
     lines.append("|---|---|")
     lines.append(
-        f'| Full editorial page | '
-        f'{{% include download-button.html href="{editorial_url}" '
-        f'label="Download PDF" check_expiry=true %}} |'
+        f'| {row} | '
+        f'{{% include download-button.html href="{pdf_url}" '
+        f'label="{label}" check_expiry=true %}} |'
     )
     lines.append("")
     lines.append(
@@ -88,8 +104,8 @@ def _build_section(paper_name, paper_code, editorial_pdf_path,
         # renders to canvas, sidestepping that entirely.
         f'<iframe class="pdf-preview" '
         f'src="{{{{ \'/assets/pdfjs/web/viewer.html\' | prepend: site.baseurl }}}}'
-        f'?file={{{{ "{editorial_url}" | url_encode }}}}" '
-        f'title="{paper_name} editorial page PDF"></iframe>'
+        f'?file={{{{ "{pdf_url}" | url_encode }}}}" '
+        f'title="{paper_name} PDF"></iframe>'
     )
 
     if article_image_paths:
@@ -117,8 +133,8 @@ def _build_section(paper_name, paper_code, editorial_pdf_path,
     return "\n".join(lines)
 
 
-def publish_post(paper_name, paper_code, today, editorial_pdf_path,
-                  article_image_paths=None):
+def publish_post(paper_name, paper_code, today, pdf_path,
+                  article_image_paths=None, is_full_edition=False):
     """Write/update today's consolidated post with this paper's section."""
     os.makedirs(POSTS_DIR, exist_ok=True)
     post_path = _post_path(today)
@@ -130,8 +146,9 @@ def publish_post(paper_name, paper_code, today, editorial_pdf_path,
         sections = dict(_SECTION_RE.findall(existing))
 
     sections[paper_code] = _build_section(
-        paper_name, paper_code, editorial_pdf_path,
+        paper_name, paper_code, pdf_path,
         article_image_paths=article_image_paths,
+        is_full_edition=is_full_edition,
     )
 
     ordered_codes = [c for c in PAPER_ORDER if c in sections] + [
