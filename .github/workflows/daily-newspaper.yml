@@ -2,8 +2,22 @@ name: Daily Editorial Extraction
 
 on:
   schedule:
-    # Run daily at 7:00 PM IST (13:30 UTC)
-    - cron: '30 13 * * *'
+    # 10:00 AM IST, then two retries 30 minutes apart (IST = UTC+5:30).
+    #
+    # The retries exist because indiags sits behind a Hostinger CDN that
+    # intermittently refuses connections from GitHub runners for stretches
+    # at a time -- on 2026-09-18 two of three dispatches died with
+    # ConnectTimeoutError on every address while the same URL served in
+    # 0.33s from elsewhere. A single daily shot loses the whole day to
+    # that.
+    #
+    # They cost nothing when the first run worked: already_processed()
+    # short-circuits every paper, the commit step finds no changes, and the
+    # site rebuild and Discord post are both skipped on that basis (see
+    # the `commit.outputs.changed` gate below).
+    - cron: '30 4 * * *'   # 10:00 IST
+    - cron: '0 5 * * *'    # 10:30 IST (retry 1)
+    - cron: '30 5 * * *'   # 11:00 IST (retry 2)
 
   workflow_dispatch:  # Allow manual trigger
 
@@ -80,6 +94,7 @@ jobs:
           python scraper.py
 
       - name: Commit and push changes
+        id: commit
         if: always()
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
@@ -89,9 +104,11 @@ jobs:
 
           if git diff --staged --quiet; then
             echo "No changes to commit"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             git commit -m "Editorial Update - $(date +'%Y-%m-%d')"
             git push
+            echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
         continue-on-error: true
 
@@ -136,7 +153,11 @@ jobs:
         # an attachment. Posting before Pages has deployed would hand
         # readers a URL that 404s for a minute or two.
         id: deploy
-        if: always()
+        # Skipped when the run changed nothing -- which is the normal case
+        # for a retry firing after a successful earlier run. Without this
+        # gate the schedule would dispatch three Pages deploys a day to
+        # publish identical content.
+        if: always() && steps.commit.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

@@ -1,6 +1,6 @@
 # E-Paper Editorial Extractor
 
-Pulls the Editorial page out of today's **The Hindu** and **Indian Express** e-papers and posts it to Discord — the single page as a PDF, plus (for The Hindu) each main article cropped out as its own image. Runs on a GitHub Actions cron, no server to maintain.
+Pulls the Editorial page out of today's **The Hindu** and **Indian Express** e-papers, publishes it to a small static site, and posts the link to Discord — the single page as a PDF, plus (for The Hindu) each main article cropped out as its own image. Runs on a GitHub Actions cron, no server to maintain.
 
 [![Python 3.11](https://img.shields.io/badge/Python-3.11-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -11,7 +11,7 @@ One GitHub Actions workflow, one source (indiags.com), both papers. It's a plain
 
 ```mermaid
 flowchart TD
-    cron["cron: 7:00 PM IST daily"] --> run["daily-newspaper.yml"]
+    cron["cron: 10:00 IST\n+ retries at 10:30, 11:00"] --> run["daily-newspaper.yml"]
     manual["workflow_dispatch\n(manual run)"] --> run
     run -->|"indiags.com\n4-hop link chain"| pdfs["The Hindu +\nIndian Express PDFs"]
     pdfs --> locate["locate Editorial page\n(tier 1: text layer\ntier 2: masthead OCR)"]
@@ -96,6 +96,8 @@ Which locator actually fired is recorded in history as `resolved_via`, and anyth
 **The download is sanity-checked before it's treated as a paper** (`_validate_download()`): `Content-Type`, `%PDF` magic bytes, a 1 MB floor and an 8-page floor. The longest-hiding failure in this system was a *successful* download of the wrong thing — see below. The edition's printed dateline is also parsed and compared against today's date, warning (but still publishing) on a mismatch, which catches a source serving a cached or wrong-day edition.
 
 **A tier-3 PDF is kept, not deleted.** The full edition stays in `artifacts/`, so the exact file that defeated both locators is available for diagnosis. The previous code deleted the download on the skip path, which is precisely why the last breakage couldn't be reproduced after the fact.
+
+**The schedule fires three times, not once** — 10:00 IST with retries at 10:30 and 11:00. indiags sits behind a Hostinger CDN that intermittently refuses connections from GitHub runners for stretches at a time; on 2026-09-18 two of three dispatches died with `ConnectTimeoutError` on every address while the same URL served in 0.33s from elsewhere, and a single daily shot loses the whole day to that. The retries are free when the first run worked: `already_processed()` short-circuits every paper, the commit step reports no changes, and both the site rebuild and the Discord post are gated on `steps.commit.outputs.changed` so a no-op run doesn't dispatch a Pages deploy or send a second message.
 
 **Problems are reported, not delivered, by the scraper** (`common.report_problem()`). Nothing diagnostic goes to Discord — that webhook points at a public community server, so it stays single-purpose: posting editorials. Instead each problem is written to three places that need no secret at all — a GitHub Actions annotation (called out inline on the run page), `$GITHUB_STEP_SUMMARY` (so the run page explains itself), and `failure-report.md`.
 
