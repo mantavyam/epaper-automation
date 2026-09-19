@@ -666,6 +666,26 @@
         "artifact_dir": "2026-09-18",
         "timestamp": "2026-09-18T13:38:37.506099+05:30"
       }
+    },
+    "2026-09-19": {
+      "The Hindu": {
+        "status": "published",
+        "source": "indiags",
+        "resolved_via": "url-shape|url-shape|unlock-fragment",
+        "located_via": "text",
+        "editorial_page_index": 9,
+        "artifact_dir": "2026-09-19",
+        "timestamp": "2026-09-19T14:27:30.574031+05:30"
+      },
+      "Indian Express": {
+        "status": "published",
+        "source": "indiags",
+        "resolved_via": "url-shape|url-shape|unlock-fragment",
+        "located_via": "ocr",
+        "editorial_page_index": 11,
+        "artifact_dir": "2026-09-19",
+        "timestamp": "2026-09-19T14:28:18.619668+05:30"
+      }
     }
   }
 }
