@@ -686,6 +686,22 @@
         "artifact_dir": "2026-09-19",
         "timestamp": "2026-09-19T14:28:18.619668+05:30"
       }
+    },
+    "2026-09-20": {
+      "The Hindu": {
+        "status": "published_full_edition",
+        "source": "indiags",
+        "located_via": "full",
+        "artifact_dir": "2026-09-20",
+        "timestamp": "2026-09-20T14:55:58.341672+05:30"
+      },
+      "Indian Express": {
+        "status": "published_full_edition",
+        "source": "indiags",
+        "located_via": "full",
+        "artifact_dir": "2026-09-20",
+        "timestamp": "2026-09-20T14:56:36.004070+05:30"
+      }
     }
   }
 }
