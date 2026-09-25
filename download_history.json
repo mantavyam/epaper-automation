@@ -764,6 +764,15 @@
         "artifact_dir": "2026-09-24",
         "timestamp": "2026-09-24T14:58:14.801865+05:30"
       }
+    },
+    "2026-09-25": {
+      "The Hindu": {
+        "status": "published_full_edition",
+        "source": "indiags",
+        "located_via": "full",
+        "artifact_dir": "2026-09-25",
+        "timestamp": "2026-09-25T15:15:57.040521+05:30"
+      }
     }
   }
 }
