@@ -773,6 +773,17 @@
         "artifact_dir": "2026-09-25",
         "timestamp": "2026-09-25T15:15:57.040521+05:30"
       }
+    },
+    "2026-09-26": {
+      "Indian Express": {
+        "status": "published",
+        "source": "indiags",
+        "resolved_via": "url-shape|url-shape|unlock-fragment",
+        "located_via": "ocr",
+        "editorial_page_index": 4,
+        "artifact_dir": "2026-09-26",
+        "timestamp": "2026-09-26T15:06:27.061276+05:30"
+      }
     }
   }
 }
