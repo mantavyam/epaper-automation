@@ -806,6 +806,17 @@
         "artifact_dir": "2026-09-29",
         "timestamp": "2026-09-29T16:22:21.698253+05:30"
       }
+    },
+    "2026-09-30": {
+      "The Hindu": {
+        "status": "published",
+        "source": "indiags",
+        "resolved_via": "url-shape|url-shape|unlock-fragment",
+        "located_via": "text",
+        "editorial_page_index": 4,
+        "artifact_dir": "2026-09-30",
+        "timestamp": "2026-09-30T16:11:43.388209+05:30"
+      }
     }
   }
 }
