@@ -839,6 +839,24 @@
         "artifact_dir": "2026-10-02",
         "timestamp": "2026-10-02T16:12:43.958946+05:30"
       }
+    },
+    "2026-10-03": {
+      "The Hindu": {
+        "status": "published",
+        "source": "indiags",
+        "resolved_via": "url-shape|url-shape|unlock-fragment",
+        "located_via": "text",
+        "editorial_page_index": 5,
+        "artifact_dir": "2026-10-03",
+        "timestamp": "2026-10-03T15:31:11.661128+05:30"
+      },
+      "Indian Express": {
+        "status": "published_full_edition",
+        "source": "indiags",
+        "located_via": "full",
+        "artifact_dir": "2026-10-03",
+        "timestamp": "2026-10-03T15:31:24.015159+05:30"
+      }
     }
   }
 }
