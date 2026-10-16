@@ -93,7 +93,7 @@ Which locator actually fired is recorded in history as `resolved_via`, and anyth
 
 **A run of full-edition fallbacks fails the run** (`common.consecutive_full_editions()`). One is survivable; three consecutive days means both tiers are dead, and each such day commits a multi-MB PDF into git history permanently. Two details matter — days with no entry are stepped over (the workflow doesn't run every day, and a gap is not evidence), and an entry from a different `source` ends the walk, so switching sources doesn't inherit the previous one's streak.
 
-**The download is sanity-checked before it's treated as a paper** (`_validate_download()`): `Content-Type`, `%PDF` magic bytes, a 1 MB floor and an 8-page floor. The longest-hiding failure in this system was a *successful* download of the wrong thing — see below. The edition's printed dateline is also parsed and compared against today's date, warning (but still publishing) on a mismatch, which catches a source serving a cached or wrong-day edition.
+**The download is sanity-checked before it's treated as a paper** (`_validate_download()`): `Content-Type`, `%PDF` magic bytes, a 1 MB floor and a 4-page floor (indiags now serves curated ~6-page "UPSC" cuts, not whole editions). A paper whose homepage card links to `/epaper-subscription?paper=` is paywalled server-side that day — logged as a notice and skipped, not raised as a failure. To unlock those, the run first logs in (`login()`) with `INDIAGS_EMAIL` / `INDIAGS_PASSWORD` when set; a failed login is reported as a warning and the run continues anonymously. The longest-hiding failure in this system was a *successful* download of the wrong thing — see below. The edition's printed dateline is also parsed and compared against today's date, warning (but still publishing) on a mismatch, which catches a source serving a cached or wrong-day edition.
 
 **A tier-3 PDF is kept, not deleted.** The full edition stays in `artifacts/`, so the exact file that defeated both locators is available for diagnosis. The previous code deleted the download on the skip path, which is precisely why the last breakage couldn't be reproduced after the fact.
 
@@ -198,7 +198,7 @@ epaper-automation/
 ## Setup
 
 1. **Discord webhook** — Server Settings → Integrations → Webhooks → create one, copy the URL.
-2. **Repo secret** — Settings → Secrets and variables → Actions → add `DISCORD_WEBHOOK_URL`.
+2. **Repo secrets** — Settings → Secrets and variables → Actions → add `DISCORD_WEBHOOK_URL`, plus `INDIAGS_EMAIL` and `INDIAGS_PASSWORD` (an indiags account, used to unlock subscription-locked papers; optional).
 3. Enable Actions on the repo. The workflow runs on its own cron; no further setup needed.
 4. **GitHub Pages** — Settings → Pages → set Source to "GitHub Actions" (one-time; `pages.yml` handles builds after that).
 

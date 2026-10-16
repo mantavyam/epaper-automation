@@ -90,6 +90,10 @@ jobs:
           # the word.
           ARTIFACTS_ROOT: .artifacts-worktree
           ARTIFACTS_DIR: ""
+          # indiags account, so subscription-locked papers unlock. Optional:
+          # unset, the run continues anonymously and skips locked papers.
+          INDIAGS_EMAIL: ${{ secrets.INDIAGS_EMAIL }}
+          INDIAGS_PASSWORD: ${{ secrets.INDIAGS_PASSWORD }}
         run: |
           python scraper.py
 

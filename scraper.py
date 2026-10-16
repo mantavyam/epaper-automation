@@ -48,6 +48,7 @@ import editorial
 import site_publish
 
 BASE_URL = "https://www.indiags.com/epaper-pdf-download"
+LOGIN_URL = "https://www.indiags.com/login"
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
 
 # paper title on site -> (display name, masthead pattern)
@@ -79,8 +80,12 @@ NOTIFY_FILE = "notify.json"
 # *successful* download of the wrong thing -- the previous source served a
 # Razorpay payment page for six green runs while the history recorded
 # "skipped_not_published" each day.
+#
+# indiags now serves curated "UPSC" cuts (~6-7 pages: front, nation,
+# editorial, explained) rather than whole editions, so the page floor sits
+# below that. The byte floor still rejects HTML/paywall pages outright.
 MIN_PDF_BYTES = 1_000_000
-MIN_PAGES = 8
+MIN_PAGES = 4
 
 common.configure_logging()
 logger = logging.getLogger(__name__)
@@ -245,11 +250,50 @@ def _extract_go_url(response):
     raise HopError("go-url", response.url, response.text)
 
 
+def login(session):
+    """Log the session in to indiags, so subscription-locked papers unlock.
+
+    Credentials come from INDIAGS_EMAIL / INDIAGS_PASSWORD (repo secrets in
+    CI, .env locally). Without them this is a no-op and the run carries on
+    anonymously -- locked papers are then skipped, as before. It's a plain
+    Laravel form: GET for the CSRF `_token`, POST it back with the
+    credentials; the session cookie then rides along on every later hop.
+    """
+    email, password = os.getenv("INDIAGS_EMAIL"), os.getenv("INDIAGS_PASSWORD")
+    if not (email and password):
+        logger.info("No indiags credentials set -- continuing anonymously")
+        return False
+
+    r = session.get(LOGIN_URL, timeout=30)
+    r.raise_for_status()
+    token = BeautifulSoup(r.text, "html.parser").find("input", {"name": "_token"})
+    if not token or not token.get("value"):
+        raise RuntimeError(f"no CSRF _token on {LOGIN_URL}")
+
+    r = session.post(
+        LOGIN_URL,
+        data={"_token": token["value"], "email": email, "password": password},
+        timeout=30,
+    )
+    r.raise_for_status()
+    # Success redirects to /dashboard; a rejected login lands back on /login.
+    if urllib.parse.urlparse(r.url).path.rstrip("/") == "/login":
+        raise RuntimeError("credentials rejected -- check INDIAGS_EMAIL / INDIAGS_PASSWORD")
+    logger.info("Logged in to indiags")
+    return True
+
+
 BOOKS_RE = re.compile(r"/epaper/books/(\d+)")
+LOCKED_RE = re.compile(r"/epaper-subscription\?paper=(\d+)")
 
 
 def find_book_ids(session):
-    """Map paper title -> book id from the homepage.
+    """Map paper title -> book id from the homepage, plus the locked titles.
+
+    indiags unlocks only some papers each day; the rest link to
+    /epaper-subscription?paper={id} and the chain behind them redirects to
+    a login page. Those are returned separately so a locked paper reads as
+    "locked today" rather than as a broken homepage.
 
     Driven off the /epaper/books/{id} link shape rather than the card
     markup (.ep-card / .ttl / a.ep-read), so a theme change that renames
@@ -262,18 +306,21 @@ def find_book_ids(session):
     r.raise_for_status()
     soup = BeautifulSoup(r.text, "html.parser")
 
-    ids = {}
+    ids, locked = {}, set()
     for a in soup.find_all("a", href=True):
         m = BOOKS_RE.search(a["href"])
-        if not m:
-            continue
-        title = _owning_paper(a)
-        if title and title not in ids:
-            ids[title] = m.group(1)
+        if m:
+            title = _owning_paper(a)
+            if title and title not in ids:
+                ids[title] = m.group(1)
+        elif LOCKED_RE.search(a["href"]):
+            title = _owning_paper(a)
+            if title:
+                locked.add(title)
 
-    if not ids:
+    if not ids and not locked:
         raise HopError("book-ids", BASE_URL, str(soup))
-    return ids
+    return ids, locked - ids.keys()
 
 
 def _owning_paper(link):
@@ -507,7 +554,19 @@ def main():
     session = build_session()
 
     try:
-        book_ids = find_book_ids(session)
+        login(session)
+    except Exception as e:
+        # Not fatal: anonymously the free paper(s) still download, and the
+        # locked ones are skipped as before. But a broken login silently
+        # costs The Hindu every day, so it's reported, not just logged.
+        common.report_problem(
+            "indiags login failed",
+            f"{e}. Continued without logging in; subscription-locked papers were skipped.",
+            level="warning",
+        )
+
+    try:
+        book_ids, locked = find_book_ids(session)
     except Exception as e:
         logger.error("Could not read the indiags homepage: %s", e)
         common.report_problem("Editorial extraction failed", f"Homepage unreadable: {e}")
@@ -518,6 +577,14 @@ def main():
     published = []
     for site_title, (display_name, header_re) in PAPERS.items():
         book_id = book_ids.get(site_title)
+        if not book_id and site_title in locked:
+            # Paywalled at the source today, server-side (the chain
+            # redirects to /login). Nothing to fix here, so it's logged
+            # rather than raised as a failure that would mail an issue
+            # every run.
+            logger.warning("%s is subscription-locked on indiags today -- skipped", site_title)
+            print(f"::notice title={display_name}::Subscription-locked on indiags today, skipped", flush=True)
+            continue
         if not book_id:
             logger.error("%s not found on indiags homepage today", site_title)
             failures.append(f"{display_name}: no book link on the homepage")
