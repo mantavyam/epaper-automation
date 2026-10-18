@@ -951,6 +951,22 @@
         "artifact_dir": "2026-10-17",
         "timestamp": "2026-10-17T14:15:25.245400+05:30"
       }
+    },
+    "2026-10-18": {
+      "The Hindu": {
+        "status": "published_full_edition",
+        "source": "indiags",
+        "located_via": "full",
+        "artifact_dir": "2026-10-18",
+        "timestamp": "2026-10-18T14:31:01.429266+05:30"
+      },
+      "Indian Express": {
+        "status": "published_full_edition",
+        "source": "indiags",
+        "located_via": "full",
+        "artifact_dir": "2026-10-18",
+        "timestamp": "2026-10-18T14:31:11.731204+05:30"
+      }
     }
   }
 }
