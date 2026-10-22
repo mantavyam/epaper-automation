@@ -1021,6 +1021,26 @@
         "artifact_dir": "2026-10-21",
         "timestamp": "2026-10-21T15:03:10.829199+05:30"
       }
+    },
+    "2026-10-22": {
+      "The Hindu": {
+        "status": "published",
+        "source": "indiags",
+        "resolved_via": "selector:a.ep-cta-btn|url-shape|unlock-fragment",
+        "located_via": "text",
+        "editorial_page_index": 2,
+        "artifact_dir": "2026-10-22",
+        "timestamp": "2026-10-22T15:04:58.467003+05:30"
+      },
+      "Indian Express": {
+        "status": "published",
+        "source": "indiags",
+        "resolved_via": "selector:a.ep-cta-btn|url-shape|unlock-fragment",
+        "located_via": "ocr",
+        "editorial_page_index": 3,
+        "artifact_dir": "2026-10-22",
+        "timestamp": "2026-10-22T15:05:12.811133+05:30"
+      }
     }
   }
 }
