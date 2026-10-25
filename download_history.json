@@ -1079,6 +1079,15 @@
         "artifact_dir": "2026-10-24",
         "timestamp": "2026-10-24T14:33:51.068869+05:30"
       }
+    },
+    "2026-10-25": {
+      "Indian Express": {
+        "status": "published_full_edition",
+        "source": "indiags",
+        "located_via": "full",
+        "artifact_dir": "2026-10-25",
+        "timestamp": "2026-10-25T14:50:22.207326+05:30"
+      }
     }
   }
 }
