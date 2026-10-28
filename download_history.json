@@ -1113,6 +1113,22 @@
         "artifact_dir": "2026-10-27",
         "timestamp": "2026-10-27T15:33:16.845111+05:30"
       }
+    },
+    "2026-10-28": {
+      "The Hindu": {
+        "status": "published_full_edition",
+        "source": "indiags",
+        "located_via": "full",
+        "artifact_dir": "2026-10-28",
+        "timestamp": "2026-10-28T16:16:27.693028+05:30"
+      },
+      "Indian Express": {
+        "status": "published_full_edition",
+        "source": "indiags",
+        "located_via": "full",
+        "artifact_dir": "2026-10-28",
+        "timestamp": "2026-10-28T16:16:42.422386+05:30"
+      }
     }
   }
 }
