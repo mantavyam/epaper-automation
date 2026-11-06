@@ -2,9 +2,9 @@
 """
 E-Newspaper Editorial Extractor (indiags.com)
 
-Walks indiags' 4-hop link chain per paper -- homepage -> book page ->
-newsletter page -> quiz-unlock redirect -- to reach a one-time-use direct
-PDF link, then extracts just the Editorial page and publishes it.
+Walks indiags' link chain per paper -- homepage -> book page ->
+quiz-unlock redirect (an older newsletter page in between is still
+handled) -- to reach a one-time-use direct PDF link, then extracts just the Editorial page and publishes it.
 
 The Hindu's PDF carries vector rule geometry, so its two main articles are
 cropped out as images. Indian Express is page-PDF-only: its editorial page
@@ -202,24 +202,39 @@ def _resolve_link(soup, base_url, url_re, book_id, selector=None, label=None, wh
 
 
 def resolve_token_url(session, book_id):
-    """Walk the 4-hop chain for one book id, return (url, how) for the PDF."""
+    """Walk the link chain for one book id, return (url, how) for the PDF."""
     hows = []
     books_url = f"{BASE_URL.rsplit('/', 1)[0]}/epaper/books/{book_id}"
     r1 = session.get(books_url, timeout=30)
     r1.raise_for_status()
-    newsletter_url, how = _resolve_link(
-        BeautifulSoup(r1.text, "html.parser"), books_url, NEWSLETTER_RE, book_id,
-        selector="a.ep-cta-btn", label="download newspaper", what="newsletter-link",
-    )
-    hows.append(how)
+    soup1 = BeautifulSoup(r1.text, "html.parser")
 
-    r2 = session.get(newsletter_url, timeout=30)
-    r2.raise_for_status()
-    open_url, how = _resolve_link(
-        BeautifulSoup(r2.text, "html.parser"), newsletter_url, OPEN_RE, book_id,
-        selector="a.ep-cta-btn", label="unlock via quiz", what="open-link",
-    )
-    hows.append(how)
+    # indiags dropped the newsletter page in 2026-11: the book page's
+    # "Download Newspaper" button now links straight to /epaper/open/{id}.
+    # Take that by URL shape when present; otherwise walk the old
+    # book -> newsletter -> open chain.
+    direct = [
+        urllib.parse.urljoin(books_url, a["href"])
+        for a in soup1.find_all("a", href=True)
+        if (m := OPEN_RE.search(a["href"])) and m.group(1) == book_id
+    ]
+    if direct:
+        open_url = direct[0]
+        hows.append("url-shape:direct-open")
+    else:
+        newsletter_url, how = _resolve_link(
+            soup1, books_url, NEWSLETTER_RE, book_id,
+            selector="a.ep-cta-btn", label="download newspaper", what="newsletter-link",
+        )
+        hows.append(how)
+
+        r2 = session.get(newsletter_url, timeout=30)
+        r2.raise_for_status()
+        open_url, how = _resolve_link(
+            BeautifulSoup(r2.text, "html.parser"), newsletter_url, OPEN_RE, book_id,
+            selector="a.ep-cta-btn", label="unlock via quiz", what="open-link",
+        )
+        hows.append(how)
 
     r3 = session.get(open_url, timeout=30, allow_redirects=True)
     r3.raise_for_status()

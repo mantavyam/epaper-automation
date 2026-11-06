@@ -13,7 +13,7 @@ One GitHub Actions workflow, one source (indiags.com), both papers. It's a plain
 flowchart TD
     cron["cron: 10:00 IST\n+ retries at 10:30, 11:00"] --> run["daily-newspaper.yml"]
     manual["workflow_dispatch\n(manual run)"] --> run
-    run -->|"indiags.com\n4-hop link chain"| pdfs["The Hindu +\nIndian Express PDFs"]
+    run -->|"indiags.com\nlink chain"| pdfs["The Hindu +\nIndian Express PDFs"]
     pdfs --> locate["locate Editorial page\n(tier 1: text layer\ntier 2: masthead OCR)"]
     locate --> single["extract single page\nas PDF"]
     locate --> crop["crop 2 articles\n(Hindu only,\nvector rule geometry)"]
@@ -27,7 +27,7 @@ flowchart TD
 
 ### Source: indiags.com
 
-`scraper.py` covers both papers by walking a four-hop link chain per paper, entirely with `requests`:
+`scraper.py` covers both papers by walking a link chain per paper, entirely with `requests`. Each paper is filed under the edition date printed on its homepage card, not the clock — indiags keeps serving yesterday's edition until the new one is uploaded.
 
 ```mermaid
 sequenceDiagram
@@ -37,14 +37,14 @@ sequenceDiagram
     S->>Site: GET /epaper-pdf-download
     Site-->>S: card grid (paper title -> book id)
     S->>Site: GET /epaper/books/{id}
-    Site-->>S: "Download Newspaper" link
-    S->>Site: GET /epaper/newsletter/{id}
-    Site-->>S: "Unlock via Quiz" link
+    Site-->>S: "Download Newspaper" link -> /epaper/open/{id}
     S->>Site: GET /epaper/open/{id}
     Site-->>S: 302 -> quiz page URL#unlock=/go/{token}&exp={epoch}
     S->>Site: GET /go/{token}
     Site-->>S: PDF bytes (200, one-time use)
 ```
+
+Until 2026-11 there was a `/epaper/newsletter/{id}` page between the book page and `/epaper/open/{id}`. The book page now links to `/epaper/open/{id}` directly; `resolve_token_url()` takes that link by URL shape when present (`resolved_via: url-shape:direct-open|…`) and still walks the old newsletter hop otherwise.
 
 The site's UI wraps this in a quiz-unlock button, a 15-second countdown banner, and assorted popups — all client-side theater. The server embeds the one-time download token in the redirect response the moment `/epaper/open/{id}` is requested, regardless of whether a human ever clicks anything. The `/go/{token}` link is genuinely single-use: a second request against the same token returns an HTML page instead of the PDF, so it's fetched exactly once and streamed straight into the extraction step, never posted as a raw link.
 
