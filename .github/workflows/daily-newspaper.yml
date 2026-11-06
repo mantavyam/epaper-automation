@@ -1,0 +1,173 @@
+name: Daily Editorial Extraction
+
+on:
+  schedule:
+    # 10:00 AM IST, then two retries 30 minutes apart (IST = UTC+5:30).
+    #
+    # The retries exist because indiags sits behind a Hostinger CDN that
+    # intermittently refuses connections from GitHub runners for stretches
+    # at a time -- on 2026-09-18 two of three dispatches died with
+    # ConnectTimeoutError on every address while the same URL served in
+    # 0.33s from elsewhere. A single daily shot loses the whole day to
+    # that.
+    #
+    # They cost nothing when the first run worked: already_processed()
+    # short-circuits every paper (it reads today's release), nothing is
+    # published, and the site rebuild and Discord post are both skipped on
+    # that basis (see the `extract.outputs.site_changed` gate below).
+    - cron: '30 4 * * *'   # 10:00 IST
+    - cron: '0 5 * * *'    # 10:30 IST (retry 1)
+    - cron: '30 5 * * *'   # 11:00 IST (retry 2)
+
+  workflow_dispatch:  # Allow manual trigger
+
+permissions:
+  contents: write  # create, upload to and delete releases
+  actions: write
+  issues: write  # failure reports are delivered as a GitHub Issue (see below)
+
+jobs:
+  extract-editorial:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Tesseract OCR
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tesseract-ocr
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run editorial extraction
+        id: extract
+        env:
+          # Each day's files and run record go to that day's GitHub Release
+          # (releases.py, via the gh CLI) -- nothing is committed.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # indiags account, so subscription-locked papers unlock. Optional:
+          # unset, the run continues anonymously and skips locked papers.
+          INDIAGS_EMAIL: ${{ secrets.INDIAGS_EMAIL }}
+          INDIAGS_PASSWORD: ${{ secrets.INDIAGS_PASSWORD }}
+        run: |
+          python scraper.py
+
+      - name: Rebuild site and wait for the deploy
+        # The site is built from the releases, so a release change alone
+        # triggers nothing -- dispatch pages.yml explicitly.
+        #
+        # We wait for it rather than firing and forgetting, because the
+        # Discord message is now a link to the published page instead of
+        # an attachment. Posting before Pages has deployed would hand
+        # readers a URL that 404s for a minute or two.
+        id: deploy
+        # Skipped when the run changed nothing (no paper published, no
+        # release expired) -- the normal case for a retry firing after a
+        # successful earlier run. Without this gate the schedule would
+        # dispatch three Pages deploys a day to publish identical content.
+        if: always() && steps.extract.outputs.site_changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -uo pipefail
+
+          # `gh workflow run` is asynchronous and returns no run id, so
+          # note the newest run before dispatching and poll until a newer
+          # one appears. Matching on "newest id changed" rather than
+          # guessing avoids watching the *previous* run to completion and
+          # declaring success before ours has even started.
+          before=$(gh run list --workflow=pages.yml --limit 1 \
+            --json databaseId --jq '.[0].databaseId // 0')
+          gh workflow run pages.yml
+
+          run_id="$before"
+          for _ in $(seq 1 30); do
+            sleep 5
+            run_id=$(gh run list --workflow=pages.yml --limit 1 \
+              --json databaseId --jq '.[0].databaseId // 0')
+            if [ "$run_id" != "$before" ]; then break; fi
+          done
+
+          if [ "$run_id" = "$before" ]; then
+            echo "::warning::pages.yml run never appeared -- skipping the Discord link"
+            echo "deployed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if gh run watch "$run_id" --exit-status; then
+            echo "deployed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::pages.yml deploy failed -- skipping the Discord link"
+            echo "deployed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Post the Discord link
+        # Only once the page it points at is actually live. notify.py is a
+        # no-op when nothing was published this run (no notify.json), which
+        # is what keeps manual re-runs from double-posting.
+        if: always() && steps.deploy.outputs.deployed == 'true'
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: python notify.py
+
+      - name: Report problems as a GitHub Issue
+        # Runs on success too: the early-warning report (chain surviving on
+        # a fallback locator) fires while everything still works, and that
+        # is precisely when it's worth hearing about.
+        #
+        # Delivered as an Issue rather than a Discord message because the
+        # Discord webhook points at a public community server. GitHub mails
+        # the full issue body from notifications@github.com, which lands in
+        # the same inbox as the automated run-failure mail -- whose own
+        # template can't carry custom text.
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TITLE: "Editorial extraction needs attention"
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          # One open issue at a time, matched on exact title, so a break
+          # that persists for days adds comments instead of mailing a new
+          # issue every run. Listed and filtered locally rather than via
+          # `--search`, which goes through GitHub's search index and can
+          # lag behind a just-created issue -- long enough to open a
+          # duplicate on the next run.
+          existing=$(gh issue list --state open --limit 100 --json number,title \
+            --jq "map(select(.title == \"$TITLE\")) | .[0].number // empty")
+
+          if [ -s failure-report.md ]; then
+            { cat failure-report.md; echo; echo "[Run log]($RUN_URL)"; } > issue-body.md
+            if [ -n "$existing" ]; then
+              gh issue comment "$existing" --body-file issue-body.md
+            else
+              gh issue create --title "$TITLE" --body-file issue-body.md
+            fi
+          elif [ -n "$existing" ] && [ "${{ steps.extract.outcome }}" = "success" ]; then
+            gh issue comment "$existing" \
+              --body "Recovered — [this run]($RUN_URL) completed with no problems reported. Closing."
+            gh issue close "$existing"
+          fi
+
+      - name: Upload diagnostics (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: error-logs
+          path: |
+            *.log
+            hop-*.html
+            failure-report.md
+          retention-days: 7

@@ -1,0 +1,39 @@
+# Welcome to Jekyll!
+#
+# This config file is meant for settings that affect your whole site, values
+# which you are expected to set up once and rarely edit after that. If you find
+# yourself editing these this file very often, consider using Jekyll's data files
+# feature for the data you need to update frequently.
+#
+# For technical reasons, this file is *NOT* reloaded automatically when you use
+# 'jekyll serve'. If you change this file, please restart the server process.
+
+# Site settings
+# These are used to personalize your new site. If you look in the HTML files,
+# you will see them accessed via {{ site.title }}, {{ site.github_repo }}, and so on.
+# You can create any custom variable you would like, and they will be accessible
+# in the templates via {{ site.myvariable }}.
+title: Newspaper Editorials
+description: "For Personal Academic use by Exam Aspirants in India — Editorials only, sourced from Publicly available content, no resale or rights claimed. All rights belongs to its respective publisher."
+baseurl: "/epaper-automation" # the subpath of your site, e.g. /blog
+url: "https://mantavyam.github.io" # the base hostname & protocol for your site
+github_repo: epaper-automation # the GitHub repo name for your project
+github_username: mantavyam
+
+# Optional social link, you can choose from the following options:
+# twitter (default), instagram, medium, or dribbble
+social_link: twitter
+social_username: mantavyam_
+
+# Set theme color here
+# Choose from: black (default), blue, gray, magenta, orange, red, white, and yellow.
+theme_color: black
+
+# Build settings
+markdown: kramdown
+permalink: /epaper/:day-:month-:year/
+# Jekyll normalizes every post date to the build machine's local timezone
+# before deriving permalink components -- pinning this to IST keeps
+# /epaper/DD-MM-YYYY/ correct regardless of which timezone actually runs
+# the build (GitHub Actions runners default to UTC).
+timezone: Asia/Kolkata
