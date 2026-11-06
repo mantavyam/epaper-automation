@@ -138,11 +138,18 @@ def _sections(release):
 
 
 def _post_date(release):
-    """Earliest publish time in the ledger (IST), else midnight IST."""
+    """The edition's date, at the earliest publish time of day (IST).
+
+    Always the release's own date: Jekyll derives the permalink
+    (/epaper/DD-MM-YYYY/) from it, and a paper scraped after midnight is
+    still the previous day's edition. Only the time of day comes from the
+    ledger -- the edition date is never after the scrape, so the result is
+    never in the future (Jekyll silently drops future-dated posts).
+    """
     stamps = [e["timestamp"] for e in release["ledger"].values() if e.get("timestamp")]
-    if stamps:
-        return min(datetime.fromisoformat(s) for s in stamps).astimezone(common.IST)
-    return datetime.combine(release["date"], datetime.min.time(), common.IST)
+    when = (min(datetime.fromisoformat(s) for s in stamps).astimezone(common.IST).time()
+            if stamps else datetime.min.time())
+    return datetime.combine(release["date"], when, common.IST)
 
 
 def build():
