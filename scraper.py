@@ -35,7 +35,7 @@ import json
 import socket
 import logging
 import urllib.parse
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 
 import requests
@@ -290,7 +290,13 @@ LOCKED_RE = re.compile(r"/epaper-subscription\?paper=(\d+)")
 
 
 def find_book_ids(session):
-    """Map paper title -> book id from the homepage, plus the locked titles.
+    """Map paper title -> book id from the homepage, plus the locked titles
+    and each card's edition date.
+
+    The edition date is what the day's files, release and post are filed
+    under -- not the clock. indiags keeps serving yesterday's edition until
+    the new one is uploaded, so a run after midnight (or a morning upload
+    running late) would otherwise publish yesterday's paper as today's.
 
     indiags unlocks only some papers each day; the rest link to
     /epaper-subscription?paper={id} and the chain behind them redirects to
@@ -308,21 +314,36 @@ def find_book_ids(session):
     r.raise_for_status()
     soup = BeautifulSoup(r.text, "html.parser")
 
-    ids, locked = {}, set()
+    ids, locked, dates = {}, set(), {}
     for a in soup.find_all("a", href=True):
         m = BOOKS_RE.search(a["href"])
         if m:
-            title = _owning_paper(a)
+            title, card = _owning_paper(a)
             if title and title not in ids:
                 ids[title] = m.group(1)
+                dates[title] = _card_date(card)
         elif LOCKED_RE.search(a["href"]):
-            title = _owning_paper(a)
+            title, _ = _owning_paper(a)
             if title:
                 locked.add(title)
 
     if not ids and not locked:
         raise HopError("book-ids", BASE_URL, str(soup))
-    return ids, locked - ids.keys()
+    return ids, locked - ids.keys(), dates
+
+
+CARD_DATE_RE = re.compile(r"\b(\d{1,2} [A-Z][a-z]{2} \d{4})\b")
+
+
+def _card_date(card):
+    """Edition date printed on a paper's card ("06 Nov 2026"), or None."""
+    m = CARD_DATE_RE.search(card.get_text(" ", strip=True)) if card else None
+    if not m:
+        return None
+    try:
+        return datetime.strptime(m.group(1), "%d %b %Y").date()
+    except ValueError:
+        return None
 
 
 def _owning_paper(link):
@@ -337,19 +358,22 @@ def _owning_paper(link):
     So walk outward and stop at the first ancestor mentioning exactly one
     known paper. Too-narrow levels mention none and are skipped; too-wide
     levels mention several and are rejected rather than guessed at.
+
+    Returns (title, card) -- the card is that ancestor, which also carries
+    the edition date -- or (None, None).
     """
     node = link
     for _ in range(6):
         node = node.parent
         if node is None:
-            return None
+            return None, None
         text = " ".join(node.get_text(" ", strip=True).lower().split())
         hits = [t for t in PAPERS if t.lower() in text]
         if len(hits) == 1:
-            return hits[0]
+            return hits[0], node
         if len(hits) > 1:
-            return None  # ambiguous: this level spans multiple papers
-    return None
+            return None, None  # ambiguous: this level spans multiple papers
+    return None, None
 
 
 def _validate_download(content, content_type, display_name):
@@ -563,7 +587,7 @@ def main():
         )
 
     try:
-        book_ids, locked = find_book_ids(session)
+        book_ids, locked, editions = find_book_ids(session)
     except Exception as e:
         logger.error("Could not read the indiags homepage: %s", e)
         common.report_problem("Editorial extraction failed", f"Homepage unreadable: {e}")
@@ -587,20 +611,34 @@ def main():
             failures.append(f"{display_name}: no book link on the homepage")
             overall_ok = False
             continue
+        # File the paper under the edition date its card shows, never a
+        # future one; no readable date falls back to the clock.
+        edition = editions.get(site_title)
+        day = today
+        if edition and edition <= today.date():
+            day = today.replace(year=edition.year, month=edition.month, day=edition.day)
+        if day.date() != today.date():
+            logger.info("%s: homepage serves the %s edition", display_name, day.strftime("%d %b %Y"))
         try:
             ok, located_via = process_paper(
-                session, site_title, display_name, header_re, book_id, history, today
+                session, site_title, display_name, header_re, book_id, history, day
             )
             overall_ok = overall_ok and ok
             if located_via:
-                published.append({"name": display_name, "located_via": located_via})
+                published.append({"name": display_name, "located_via": located_via, "day": day})
         except Exception as e:
             logger.error("Error processing %s: %s", display_name, e)
             failures.append(f"{display_name}: {e}")
             overall_ok = False
 
     if published:
-        _write_notify_manifest(published, today)
+        # One link per message: the newest edition's page, listing the
+        # papers on it.
+        latest = max(p["day"] for p in published)
+        _write_notify_manifest(
+            [{k: v for k, v in p.items() if k != "day"} for p in published if p["day"] == latest],
+            latest,
+        )
 
     # Streak and drift alerts raise their own, more specific reports, so
     # only raise the generic one for exceptions caught here.
