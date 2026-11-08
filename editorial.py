@@ -45,13 +45,22 @@ OCR_DPI = 200
 # was missed.
 TOP_FRAC = 0.25
 
-# Both papers print teasers pointing at the editorial page on the front
-# pages ("The Editorial Page: Release 2017-18 consumption data..."), which
-# would otherwise match first and win. Skipping the first two pages is a
-# cheap extra guard -- but note it is NOT sufficient on its own: the
-# teaser observed on 2026-09-18 was on page index 4. What actually
-# separates teaser from masthead is the normalised full-line match below.
-SKIP_PAGES = 2
+# Every page is searched, the first included. indiags trims the paper
+# before uploading, so the editorial page can sit at index 0 or 1 -- it
+# was at index 1 on 2026-11-03 and 11-05, which an old "skip the first two
+# pages" guard against front-page teasers missed. The teasers ("The
+# Editorial Page: Release 2017-18 consumption data...") are rejected by
+# the normalised full-line match below, not by skipping pages.
+
+# Editions indiags sometimes uploads under the main paper's card that
+# carry no editorial page: The Hindu's children's supplement (2026-11-07)
+# and a Sunday upload of only pages 8-14 (2026-11-01). Checked only after
+# both locators fail, so a Sunday paper that does have its editorial page
+# is still published.
+NON_EDITORIAL_EDITIONS = [
+    (re.compile(r"\bin school\b"), "The Hindu In School"),
+    (re.compile(r"\bsunday\b"), "Sunday edition"),
+]
 
 _NORM_RE = re.compile(r"[^a-z0-9]+")
 
@@ -104,7 +113,13 @@ def _ocr_strip(page, top_frac=TOP_FRAC, dpi=OCR_DPI):
     return pytesseract.image_to_string(Image.open(io.BytesIO(pix.tobytes("png"))))
 
 
-def _locate_via_text(doc, header_re, top_frac, skip_pages):
+def _matches(line, header_re, backup_re):
+    """The masthead as the whole line, or the backup marker anywhere in it."""
+    norm = _normalize(line)
+    return bool(header_re.fullmatch(norm) or (backup_re and backup_re.search(norm)))
+
+
+def _locate_via_text(doc, header_re, top_frac, backup_re=None):
     """Find the masthead in the text layer, gated on where it sits.
 
     Matched on geometry (the line's y-position), not on its ordinal among
@@ -116,8 +131,6 @@ def _locate_via_text(doc, header_re, top_frac, skip_pages):
     reporting "no editorial page" on days the paper had published one.
     """
     for i, page in enumerate(doc):
-        if i < skip_pages:
-            continue
         cutoff = page.rect.y0 + page.rect.height * top_frac
         for block in page.get_text("dict")["blocks"]:
             if block["type"] != 0:
@@ -126,12 +139,12 @@ def _locate_via_text(doc, header_re, top_frac, skip_pages):
                 if line["bbox"][1] > cutoff:
                     continue
                 text = "".join(s["text"] for s in line["spans"])
-                if header_re.fullmatch(_normalize(text)):
+                if _matches(text, header_re, backup_re):
                     return i
     return None
 
 
-def _locate_via_ocr(doc, header_re, top_frac, dpi, skip_pages):
+def _locate_via_ocr(doc, header_re, top_frac, dpi, backup_re=None):
     """Find the masthead by OCR'ing each page's top strip.
 
     Returns on the first hit rather than sweeping the whole edition --
@@ -139,17 +152,19 @@ def _locate_via_ocr(doc, header_re, top_frac, dpi, skip_pages):
     the editorial page.
     """
     for i, page in enumerate(doc):
-        if i < skip_pages:
-            continue
         for line in _ocr_strip(page, top_frac, dpi).split("\n"):
-            if header_re.fullmatch(_normalize(line)):
+            if _matches(line, header_re, backup_re):
                 return i
     return None
 
 
-def locate_editorial_page(doc, header_re, top_frac=TOP_FRAC, dpi=OCR_DPI,
-                          skip_pages=SKIP_PAGES):
+def locate_editorial_page(doc, header_re, backup_re=None, top_frac=TOP_FRAC, dpi=OCR_DPI):
     """Locate the editorial page. Returns (page_index, how).
+
+    backup_re is a second marker that only appears on the editorial page
+    (Indian Express's "Wordly Wise" column), searched for anywhere in a
+    line of the top strip. It covers days OCR garbles the masthead itself,
+    as on 2026-11-04.
 
     how is one of:
       "text"         -- found in a usable text layer. The good path.
@@ -165,7 +180,7 @@ def locate_editorial_page(doc, header_re, top_frac=TOP_FRAC, dpi=OCR_DPI,
     """
     usable = text_layer_usable(doc)
     if usable:
-        index = _locate_via_text(doc, header_re, top_frac, skip_pages)
+        index = _locate_via_text(doc, header_re, top_frac, backup_re)
         if index is not None:
             return index, "text"
         logger.warning(
@@ -173,10 +188,30 @@ def locate_editorial_page(doc, header_re, top_frac=TOP_FRAC, dpi=OCR_DPI,
             "-- falling back to OCR"
         )
 
-    index = _locate_via_ocr(doc, header_re, top_frac, dpi, skip_pages)
+    index = _locate_via_ocr(doc, header_re, top_frac, dpi, backup_re)
     if index is not None:
         return index, "ocr-fallback" if usable else "ocr"
     return None, "full"
+
+
+def non_editorial_edition(doc, top_frac=0.1):
+    """Name the edition if it's one that has no editorial page, else None.
+
+    Reads each page's header strip -- the text layer when it decodes, OCR
+    otherwise -- for the markers in NON_EDITORIAL_EDITIONS.
+    """
+    usable = text_layer_usable(doc)
+    for page in doc:
+        if usable:
+            r = page.rect
+            strip = page.get_text(clip=pymupdf.Rect(r.x0, r.y0, r.x1, r.y0 + r.height * top_frac))
+        else:
+            strip = _ocr_strip(page, top_frac)
+        text = _normalize(strip)
+        for pattern, label in NON_EDITORIAL_EDITIONS:
+            if pattern.search(text):
+                return label
+    return None
 
 
 def edition_date(doc, page_index, top_frac=TOP_FRAC, dpi=OCR_DPI):

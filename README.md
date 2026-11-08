@@ -11,7 +11,7 @@ One GitHub Actions workflow, one source (indiags.com), both papers. It's a plain
 
 ```mermaid
 flowchart TD
-    cron["cron: 10:00 IST\n+ retries at 10:30, 11:00"] --> run["daily-newspaper.yml"]
+    cron["cron: 06:00 IST\n+ retries at 06:30, 07:00"] --> run["daily-newspaper.yml"]
     manual["workflow_dispatch\n(manual run)"] --> run
     run -->|"indiags.com\nlink chain"| pdfs["The Hindu +\nIndian Express PDFs"]
     pdfs --> locate["locate Editorial page\n(tier 1: text layer\ntier 2: masthead OCR)"]
@@ -97,7 +97,7 @@ Which locator actually fired is recorded in the day's release ledger as `resolve
 
 **A tier-3 PDF is kept, not deleted.** The full edition is attached to the day's release, so the exact file that defeated both locators is available for diagnosis. The previous code deleted the download on the skip path, which is precisely why the last breakage couldn't be reproduced after the fact.
 
-**The schedule fires three times, not once** — 10:00 IST with retries at 10:30 and 11:00. indiags sits behind a Hostinger CDN that intermittently refuses connections from GitHub runners for stretches at a time; on 2026-09-18 two of three dispatches died with `ConnectTimeoutError` on every address while the same URL served in 0.33s from elsewhere, and a single daily shot loses the whole day to that. The retries are free when the first run worked: `already_processed()` short-circuits every paper (it reads today's release), and both the site rebuild and the Discord post are gated on `steps.extract.outputs.site_changed` — true only if a paper was published or an expired release deleted — so a no-op run doesn't dispatch a Pages deploy or send a second message.
+**The schedule fires three times, not once** — 06:00 IST with retries at 06:30 and 07:00. That's 4 hours before the time we want: GitHub delays scheduled runs under load (the old 10:00 slot fired at ~16:45 IST on 2026-11-07), so scheduling early makes the delayed run land sooner. indiags sits behind a Hostinger CDN that intermittently refuses connections from GitHub runners for stretches at a time; on 2026-09-18 two of three dispatches died with `ConnectTimeoutError` on every address while the same URL served in 0.33s from elsewhere, and a single daily shot loses the whole day to that. The retries are free when the first run worked: `already_processed()` short-circuits every paper (it reads today's release), and both the site rebuild and the Discord post are gated on `steps.extract.outputs.site_changed` — true only if a paper was published or an expired release deleted — so a no-op run doesn't dispatch a Pages deploy or send a second message.
 
 **Problems are reported, not delivered, by the scraper** (`common.report_problem()`). Nothing diagnostic goes to Discord — that webhook points at a public community server, so it stays single-purpose: posting editorials. Instead each problem is written to three places that need no secret at all — a GitHub Actions annotation (called out inline on the run page), `$GITHUB_STEP_SUMMARY` (so the run page explains itself), and `failure-report.md`.
 

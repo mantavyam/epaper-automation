@@ -68,6 +68,11 @@ PAPERS = {
     "The Hindu": ("The Hindu", re.compile(r"editorial")),
     "Indian Express": ("Indian Express", re.compile(r"(the )?editorial page")),
 }
+# Backup marker per paper: text that only appears on the editorial page,
+# searched for anywhere in a top-strip line (see
+# editorial.locate_editorial_page). Indian Express runs its "Wordly Wise"
+# column there.
+BACKUP_MARKERS = {"Indian Express": re.compile(r"\bwordly wise\b")}
 PAPER_CODES = {"The Hindu": "TH", "Indian Express": "IE"}
 SOURCE = "indiags"
 
@@ -85,8 +90,11 @@ NOTIFY_FILE = "notify.json"
 #
 # indiags now serves curated "UPSC" cuts (~6-7 pages: front, nation,
 # editorial, explained) rather than whole editions, so the page floor sits
-# below that. The byte floor still rejects HTML/paywall pages outright.
-MIN_PDF_BYTES = 1_000_000
+# below that. The byte floor still rejects HTML/paywall pages outright; it
+# sits well under the smallest real cut seen (a 0.75 MB Sunday upload of
+# The Hindu, 2026-11-08), since the magic-byte and page checks already
+# catch a wrong or truncated file.
+MIN_PDF_BYTES = 250_000
 MIN_PAGES = 4
 
 common.configure_logging()
@@ -465,13 +473,21 @@ def process_paper(session, site_title, display_name, header_re, book_id, history
 
     doc = pymupdf.open(full_pdf_path)
     try:
-        if len(doc) < MIN_PAGES:
-            raise RuntimeError(
-                f"{display_name}: PDF has only {len(doc)} pages, "
-                f"below the {MIN_PAGES}-page floor for a full edition"
-            )
+        page_idx, located_via = editorial.locate_editorial_page(
+            doc, header_re, BACKUP_MARKERS.get(display_name)
+        )
 
-        page_idx, located_via = editorial.locate_editorial_page(doc, header_re)
+        skipped = editorial.non_editorial_edition(doc) if located_via == "full" else None
+        if skipped:
+            # indiags uploaded an edition with no editorial page under this
+            # paper's card. Nothing is recorded, so the next retry tries
+            # again in case indiags replaces the upload.
+            logger.warning("%s: indiags served the %s, which has no editorial page -- skipped",
+                           display_name, skipped)
+            print(f"::notice title={display_name}::indiags served the {skipped} "
+                  f"(no editorial page), skipped", flush=True)
+            return True, None
+
         _check_freshness(doc, page_idx if page_idx is not None else 0, display_name, today)
 
         if located_via == "ocr-fallback":
@@ -489,6 +505,14 @@ def process_paper(session, site_title, display_name, header_re, book_id, history
             )
 
         if located_via == "full":
+            # Only the full-edition fallback needs the page floor: a found
+            # editorial page is proof enough the file is real, but a short
+            # file with no editorial is more likely a truncated download.
+            if len(doc) < MIN_PAGES:
+                raise RuntimeError(
+                    f"{display_name}: PDF has only {len(doc)} pages, "
+                    f"below the {MIN_PAGES}-page floor for a full edition"
+                )
             ok = _publish_full_edition(
                 display_name, full_pdf_path, history, date_key, month_key, today,
             )
